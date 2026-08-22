@@ -3,3 +3,7 @@ deep_translator
 gTTS
 python-docx
 flask
+SpeechRecognition
+pydub
+pytesseract
+Pillow
