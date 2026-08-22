@@ -11,7 +11,7 @@ from flask import Flask
 import threading
 
 # --- BOT TOKENI (O'zingizning tokeningizni yozing) ---
-TOKEN = "SIZNING_BOT_TOKENINGIZNI_SHU_YERGA_YOZING"
+TOKEN = "8759004216:AAEjvnt-PKLlbtgy8jZCpTyIfeyngCZ2-IU"
 bot = telebot.TeleBot(TOKEN)
 
 # Majburiy obuna qilinadigan kanallar ro'yxati
