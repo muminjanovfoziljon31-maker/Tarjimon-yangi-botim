@@ -4,7 +4,8 @@ from docx import Document
 from gtts import gTTS
 import os
 
-TOKEN = "8759004216:AAErGjowHh3eO_RgSzAl-plm_RBscs4JxKE"
+TOKEN = "8759004216:AAEjvnt-PKLlbtgy8jZCpTyIfeyngCZ2-IU"
+
 
 bot = telebot.TeleBot(TOKEN)
 user_languages = {}
