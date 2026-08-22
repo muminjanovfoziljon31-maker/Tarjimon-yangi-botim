@@ -1,4 +1,5 @@
 pyTelegramBotAPI
-deep-translator
-python-docx
+googletrans==4.0.0-rc1
 gTTS
+python-docx
+flask
