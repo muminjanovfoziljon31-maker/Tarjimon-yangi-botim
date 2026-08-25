@@ -1,4 +1,5 @@
 import os
+import tempfile
 import threading
 
 import telebot
@@ -13,712 +14,547 @@ from PIL import Image
 from flask import Flask
 
 
-# =========================
+# =========================================================
 # BOT SOZLAMALARI
-# =========================
+# =========================================================
 
-TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")
 
-if TOKEN == "YOUR_BOT_TOKEN":
+if not TOKEN:
     raise ValueError("BOT_TOKEN kiritilmagan!")
 
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+
+
+# =========================================================
+# KANALLAR
+# =========================================================
 
 CHANNELS = [
     "@Matematikamilliysertifikat_F",
     "@afkari_dan"
 ]
 
+
+# =========================================================
+# FOYDALANUVCHI MA'LUMOTLARI
+# =========================================================
+
 user_languages = {}
 all_users = set()
 user_favorites = {}
 
 
-# =========================
+# =========================================================
+# 10 TA TIL
+# =========================================================
+
+LANGUAGES = {
+    "uz": "🇺🇿 O'zbekcha",
+    "en": "🇬🇧 English",
+    "ru": "🇷🇺 Русский",
+    "ar": "🇸🇦 العربية",
+    "ko": "🇰🇷 한국어",
+    "tr": "🇹🇷 Türkçe",
+    "de": "🇩🇪 Deutsch",
+    "fr": "🇫🇷 Français",
+    "es": "🇪🇸 Español",
+    "zh-CN": "🇨🇳 中文"
+}
+
+TTS_LANGUAGES = {
+    "uz": "uz",
+    "en": "en",
+    "ru": "ru",
+    "ar": "ar",
+    "ko": "ko",
+    "tr": "tr",
+    "de": "de",
+    "fr": "fr",
+    "es": "es",
+    "zh-CN": "zh-CN"
+}
+
+
+# =========================================================
 # MATNLAR
-# =========================
+# =========================================================
 
 TEXTS = {
     "uz": {
-        "about": "ℹ️ Bot haqida",
-        "help": "❓ Yordam",
-        "change_lang": "⚙️ Tilni o'zgartirish",
+        "about": "🤖 Bot haqida",
+        "help": "💡 Yordam",
+        "change_lang": "🌐 Tilni o'zgartirish",
         "favorites": "⭐ Sevimlilar",
-        "about_text": (
-            "🌐 <b>Tarjimon Bot</b>\n\n"
-            "Matn, hujjat, ovozli xabar va rasmlardagi "
-            "matnlarni tarjima qilishga yordam beradi."
-        ),
-        "help_text": (
-            "❓ <b>Yordam</b>\n\n"
-            "/start - Botni ishga tushirish\n\n"
-            "Matn, hujjat, ovozli xabar yoki rasm yuboring."
-        ),
-        "select_new": "Marhamat, kerakli tilni tanlang:",
+        "select_new": "🌐 Kerakli tilni tanlang:",
+        "language_changed": "✅ Til muvaffaqiyatli o'zgartirildi!",
+        "favorite_add": "⭐ Sevimlilarga qo'shish",
+        "favorite_added": "⭐ Tarjima sevimlilarga qo'shildi!",
+        "favorite_exists": "⭐ Bu tarjima allaqachon sevimlilarda!",
+        "fav_empty": "⭐ Sizda saqlangan tarjimalar yo'q.",
+        "favorites_title": "⭐ <b>Sevimlilar:</b>",
         "sub_required": (
-            "⚠️ Xizmatdan foydalanish uchun avval "
-            "quyidagi kanallarga obuna bo'ling:\n\n"
+            "⚠️ Botdan foydalanish uchun avval quyidagi kanallarga "
+            "obuna bo'ling:\n\n"
             "👉 @Matematikamilliysertifikat_F\n"
             "👉 @afkari_dan\n\n"
-            "Obuna bo'lgach, xabaringizni qayta yuboring!"
+            "Obuna bo'lgach, xabaringizni qayta yuboring."
         ),
-        "fav_empty": "⭐ Sizda hozircha saqlangan sevimlilar yo'q.",
-        "added_fav": "⭐ So'z sevimlilarga qo'shildi!"
-    },
-
-    "ru": {
-        "about": "ℹ️ О боте",
-        "help": "❓ Помощь",
-        "change_lang": "⚙️ Изменить язык",
-        "favorites": "⭐ Избранное",
+        "start": (
+            "🇺🇿 Assalomu alaykum! 👋\n\n"
+            "🌐 Super Tarjimon Botga xush kelibsiz!\n\n"
+            "Tilni tanlang yoki tarjima qilish uchun xabar yuboring."
+        ),
         "about_text": (
-            "🌐 <b>Переводчик Бот</b>\n\n"
-            "Помогает переводить текст, документы, "
-            "голосовые сообщения и изображения."
+            "🤖 <b>Super Translator Bot</b>\n\n"
+            "🌐 Matn tarjimasi\n"
+            "📄 TXT va DOCX tarjimasi\n"
+            "🎙 Ovozli xabar tarjimasi\n"
+            "🔊 Tarjimani ovozli eshitish\n"
+            "🖼 Rasmdagi matnni tarjima qilish\n"
+            "⭐ Sevimlilarga saqlash\n\n"
+            "👨‍💻 Dasturchi: @Foziljon20l0"
         ),
         "help_text": (
-            "❓ <b>Помощь</b>\n\n"
-            "/start - Запустить бота\n\n"
-            "Отправьте текст, документ, голосовое сообщение "
-            "или изображение."
-        ),
-        "select_new": "Пожалуйста, выберите язык:",
-        "sub_required": (
-            "⚠️ Чтобы пользоваться ботом, подпишитесь "
-            "на наши каналы:\n\n"
-            "👉 @Matematikamilliysertifikat_F\n"
-            "👉 @afkari_dan\n\n"
-            "После подписки отправьте сообщение снова!"
-        ),
-        "fav_empty": "⭐ У вас пока нет сохраненных слов.",
-        "added_fav": "⭐ Слово добавлено в избранное!"
+            "💡 <b>Botdan foydalanish</b>\n\n"
+            "1️⃣ Tilni tanlang.\n"
+            "2️⃣ Matn yuboring.\n"
+            "3️⃣ TXT yoki DOCX fayl yuboring.\n"
+            "4️⃣ Ovozli xabar yuboring.\n"
+            "5️⃣ Matnli rasm yuboring.\n"
+            "6️⃣ ⭐ tugmasi orqali tarjimani saqlang.\n"
+            "7️⃣ 🌐 orqali tilni almashtiring."
+        )
     },
 
     "en": {
-        "about": "ℹ️ About bot",
-        "help": "❓ Help",
-        "change_lang": "⚙️ Change language",
+        "about": "🤖 About bot",
+        "help": "💡 Help",
+        "change_lang": "🌐 Change language",
         "favorites": "⭐ Favorites",
-        "about_text": (
-            "🌐 <b>Translator Bot</b>\n\n"
-            "It helps translate text, documents, "
-            "voice messages and images."
-        ),
-        "help_text": (
-            "❓ <b>Help</b>\n\n"
-            "/start - Start the bot\n\n"
-            "Send me text, a document, voice message or image."
-        ),
-        "select_new": "Please choose a language:",
-        "sub_required": (
-            "⚠️ To use the service, please subscribe "
-            "to our channels:\n\n"
-            "👉 @Matematikamilliysertifikat_F\n"
-            "👉 @afkari_dan\n\n"
-            "After subscribing, send your message again!"
-        ),
-        "fav_empty": "⭐ You don't have any saved favorites yet.",
-        "added_fav": "⭐ Word added to favorites!"
+        "select_new": "🌐 Choose your language:",
+        "language_changed": "✅ Language changed!",
+        "favorite_add": "⭐ Add to favorites",
+        "favorite_added": "⭐ Added to favorites!",
+        "favorite_exists": "⭐ Already in favorites!",
+        "fav_empty": "⭐ No saved translations.",
+        "favorites_title": "⭐ <b>Favorites:</b>",
+        "sub_required": "⚠️ Please subscribe to:\n\n👉 @Matematikamilliysertifikat_F\n👉 @afkari_dan\n\nThen send your message again.",
+        "start": "🇬🇧 Hello! 👋\n\n🌐 Welcome to Super Translator Bot!\n\nChoose a language or send a message.",
+        "about_text": "🤖 <b>Super Translator Bot</b>\n\n🌐 Text translation\n📄 TXT and DOCX translation\n🎙 Voice translation\n🔊 Text-to-speech\n🖼 Image translation\n⭐ Favorites\n\n👨‍💻 Developer: @Foziljon20l0",
+        "help_text": "💡 <b>How to use</b>\n\n1️⃣ Choose a language.\n2️⃣ Send text.\n3️⃣ Send TXT or DOCX.\n4️⃣ Send voice.\n5️⃣ Send an image with text.\n6️⃣ Save translations with ⭐.\n7️⃣ Change language with 🌐."
+    },
+
+    "ru": {
+        "about": "🤖 О боте",
+        "help": "💡 Помощь",
+        "change_lang": "🌐 Изменить язык",
+        "favorites": "⭐ Избранное",
+        "select_new": "🌐 Выберите язык:",
+        "language_changed": "✅ Язык изменён!",
+        "favorite_add": "⭐ Добавить в избранное",
+        "favorite_added": "⭐ Добавлено в избранное!",
+        "favorite_exists": "⭐ Уже в избранном!",
+        "fav_empty": "⭐ Нет сохранённых переводов.",
+        "favorites_title": "⭐ <b>Избранное:</b>",
+        "sub_required": "⚠️ Сначала подпишитесь:\n\n👉 @Matematikamilliysertifikat_F\n👉 @afkari_dan\n\nПосле этого отправьте сообщение снова.",
+        "start": "🇷🇺 Здравствуйте! 👋\n\n🌐 Добро пожаловать в переводчик!\n\nВыберите язык или отправьте сообщение.",
+        "about_text": "🤖 <b>Super Translator Bot</b>\n\n🌐 Перевод текста\n📄 Перевод TXT и DOCX\n🎙 Перевод голоса\n🔊 Озвучивание\n🖼 Перевод изображений\n⭐ Избранное\n\n👨‍💻 Разработчик: @Foziljon20l0",
+        "help_text": "💡 <b>Как пользоваться</b>\n\n1️⃣ Выберите язык.\n2️⃣ Отправьте текст.\n3️⃣ Отправьте TXT или DOCX.\n4️⃣ Отправьте голос.\n5️⃣ Отправьте изображение с текстом.\n6️⃣ Сохраняйте перевод через ⭐.\n7️⃣ Меняйте язык через 🌐."
+    },
+
+    "ar": {
+        "about": "🤖 حول البوت",
+        "help": "💡 المساعدة",
+        "change_lang": "🌐 تغيير اللغة",
+        "favorites": "⭐ المفضلة",
+        "select_new": "🌐 اختر اللغة:",
+        "language_changed": "✅ تم تغيير اللغة!",
+        "favorite_add": "⭐ إضافة إلى المفضلة",
+        "favorite_added": "⭐ تمت الإضافة!",
+        "favorite_exists": "⭐ موجود بالفعل!",
+        "fav_empty": "⭐ لا توجد ترجمات محفوظة.",
+        "favorites_title": "⭐ <b>المفضلة:</b>",
+        "sub_required": "⚠️ يرجى الاشتراك أولاً:\n\n👉 @Matematikamilliysertifikat_F\n👉 @afkari_dan\n\nثم أرسل رسالتك مرة أخرى.",
+        "start": "🇸🇦 مرحباً! 👋\n\n🌐 أهلاً بك في بوت الترجمة!\n\nاختر لغة أو أرسل رسالة.",
+        "about_text": "🤖 <b>Super Translator Bot</b>\n\n🌐 ترجمة النصوص\n📄 ترجمة TXT و DOCX\n🎙 ترجمة الصوت\n🔊 النطق الصوتي\n🖼 ترجمة الصور\n⭐ المفضلة\n\n👨‍💻 المطور: @Foziljon20l0",
+        "help_text": "💡 <b>طريقة الاستخدام</b>\n\n1️⃣ اختر اللغة.\n2️⃣ أرسل النص.\n3️⃣ أرسل TXT أو DOCX.\n4️⃣ أرسل رسالة صوتية.\n5️⃣ أرسل صورة تحتوي على نص.\n6️⃣ احفظ الترجمة عبر ⭐.\n7️⃣ غيّر اللغة عبر 🌐."
+    },
+
+    "ko": {
+        "about": "🤖 봇 정보",
+        "help": "💡 도움말",
+        "change_lang": "🌐 언어 변경",
+        "favorites": "⭐ 즐겨찾기",
+        "select_new": "🌐 언어를 선택하세요:",
+        "language_changed": "✅ 언어가 변경되었습니다!",
+        "favorite_add": "⭐ 즐겨찾기에 추가",
+        "favorite_added": "⭐ 즐겨찾기에 추가되었습니다!",
+        "favorite_exists": "⭐ 이미 저장되어 있습니다!",
+        "fav_empty": "⭐ 저장된 번역이 없습니다.",
+        "favorites_title": "⭐ <b>즐겨찾기:</b>",
+        "sub_required": "⚠️ 먼저 다음 채널을 구독하세요:\n\n👉 @Matematikamilliysertifikat_F\n👉 @afkari_dan\n\n그 후 메시지를 다시 보내세요.",
+        "start": "🇰🇷 안녕하세요! 👋\n\n🌐 번역 봇에 오신 것을 환영합니다!\n\n언어를 선택하거나 메시지를 보내세요.",
+        "about_text": "🤖 <b>Super Translator Bot</b>\n\n🌐 텍스트 번역\n📄 TXT 및 DOCX 번역\n🎙 음성 번역\n🔊 음성 출력\n🖼 이미지 번역\n⭐ 즐겨찾기\n\n👨‍💻 개발자: @Foziljon20l0",
+        "help_text": "💡 <b>사용 방법</b>\n\n1️⃣ 언어 선택\n2️⃣ 텍스트 전송\n3️⃣ TXT 또는 DOCX 전송\n4️⃣ 음성 전송\n5️⃣ 텍스트가 있는 이미지 전송\n6️⃣ ⭐ 저장\n7️⃣ 🌐 언어 변경"
+    },
+
+    "tr": {
+        "about": "🤖 Bot hakkında",
+        "help": "💡 Yardım",
+        "change_lang": "🌐 Dili değiştir",
+        "favorites": "⭐ Favoriler",
+        "select_new": "🌐 Dil seçin:",
+        "language_changed": "✅ Dil değiştirildi!",
+        "favorite_add": "⭐ Favorilere ekle",
+        "favorite_added": "⭐ Favorilere eklendi!",
+        "favorite_exists": "⭐ Zaten favorilerde!",
+        "fav_empty": "⭐ Kayıtlı çeviri yok.",
+        "favorites_title": "⭐ <b>Favoriler:</b>",
+        "sub_required": "⚠️ Önce kanallara abone olun:\n\n👉 @Matematikamilliysertifikat_F\n👉 @afkari_dan\n\nSonra mesajınızı tekrar gönderin.",
+        "start": "🇹🇷 Merhaba! 👋\n\n🌐 Çeviri Botuna hoş geldiniz!\n\nDil seçin veya mesaj gönderin.",
+        "about_text": "🤖 <b>Super Translator Bot</b>\n\n🌐 Metin çevirisi\n📄 TXT ve DOCX\n🎙 Ses çevirisi\n🔊 Sesli okuma\n🖼 Görsel çevirisi\n⭐ Favoriler\n\n👨‍💻 Geliştirici: @Foziljon20l0",
+        "help_text": "💡 <b>Kullanım</b>\n\n1️⃣ Dil seçin.\n2️⃣ Metin gönderin.\n3️⃣ TXT veya DOCX gönderin.\n4️⃣ Ses gönderin.\n5️⃣ Metinli resim gönderin.\n6️⃣ ⭐ ile kaydedin.\n7️⃣ 🌐 ile dili değiştirin."
+    },
+
+    "de": {
+        "about": "🤖 Über den Bot",
+        "help": "💡 Hilfe",
+        "change_lang": "🌐 Sprache ändern",
+        "favorites": "⭐ Favoriten",
+        "select_new": "🌐 Sprache auswählen:",
+        "language_changed": "✅ Sprache geändert!",
+        "favorite_add": "⭐ Zu Favoriten hinzufügen",
+        "favorite_added": "⭐ Zu Favoriten hinzugefügt!",
+        "favorite_exists": "⭐ Bereits gespeichert!",
+        "fav_empty": "⭐ Keine gespeicherten Übersetzungen.",
+        "favorites_title": "⭐ <b>Favoriten:</b>",
+        "sub_required": "⚠️ Bitte abonnieren Sie zuerst:\n\n👉 @Matematikamilliysertifikat_F\n👉 @afkari_dan\n\nSenden Sie danach die Nachricht erneut.",
+        "start": "🇩🇪 Hallo! 👋\n\n🌐 Willkommen beim Übersetzungsbot!\n\nWählen Sie eine Sprache oder senden Sie eine Nachricht.",
+        "about_text": "🤖 <b>Super Translator Bot</b>\n\n🌐 Textübersetzung\n📄 TXT und DOCX\n🎙 Sprachübersetzung\n🔊 Sprachausgabe\n🖼 Bildübersetzung\n⭐ Favoriten\n\n👨‍💻 Entwickler: @Foziljon20l0",
+        "help_text": "💡 <b>Verwendung</b>\n\n1️⃣ Sprache auswählen.\n2️⃣ Text senden.\n3️⃣ TXT oder DOCX senden.\n4️⃣ Sprachnachricht senden.\n5️⃣ Bild mit Text senden.\n6️⃣ Mit ⭐ speichern.\n7️⃣ Sprache mit 🌐 ändern."
+    },
+
+    "fr": {
+        "about": "🤖 À propos",
+        "help": "💡 Aide",
+        "change_lang": "🌐 Changer de langue",
+        "favorites": "⭐ Favoris",
+        "select_new": "🌐 Choisissez une langue:",
+        "language_changed": "✅ Langue changée!",
+        "favorite_add": "⭐ Ajouter aux favoris",
+        "favorite_added": "⭐ Ajouté aux favoris!",
+        "favorite_exists": "⭐ Déjà dans les favoris!",
+        "fav_empty": "⭐ Aucun favori.",
+        "favorites_title": "⭐ <b>Favoris:</b>",
+        "sub_required": "⚠️ Veuillez d'abord vous abonner:\n\n👉 @Matematikamilliysertifikat_F\n👉 @afkari_dan\n\nPuis envoyez votre message.",
+        "start": "🇫🇷 Bonjour! 👋\n\n🌐 Bienvenue dans le bot de traduction!\n\nChoisissez une langue ou envoyez un message.",
+        "about_text": "🤖 <b>Super Translator Bot</b>\n\n🌐 Traduction de texte\n📄 TXT et DOCX\n🎙 Traduction vocale\n🔊 Lecture audio\n🖼 Traduction d'images\n⭐ Favoris\n\n👨‍💻 Développeur: @Foziljon20l0",
+        "help_text": "💡 <b>Utilisation</b>\n\n1️⃣ Choisissez une langue.\n2️⃣ Envoyez un texte.\n3️⃣ Envoyez TXT ou DOCX.\n4️⃣ Envoyez un message vocal.\n5️⃣ Envoyez une image avec du texte.\n6️⃣ Enregistrez avec ⭐.\n7️⃣ Changez de langue avec 🌐."
+    },
+
+    "es": {
+        "about": "🤖 Sobre el bot",
+        "help": "💡 Ayuda",
+        "change_lang": "🌐 Cambiar idioma",
+        "favorites": "⭐ Favoritos",
+        "select_new": "🌐 Elige un idioma:",
+        "language_changed": "✅ ¡Idioma cambiado!",
+        "favorite_add": "⭐ Añadir a favoritos",
+        "favorite_added": "⭐ ¡Añadido a favoritos!",
+        "favorite_exists": "⭐ ¡Ya está en favoritos!",
+        "fav_empty": "⭐ No hay traducciones guardadas.",
+        "favorites_title": "⭐ <b>Favoritos:</b>",
+        "sub_required": "⚠️ Primero suscríbete a:\n\n👉 @Matematikamilliysertifikat_F\n👉 @afkari_dan\n\nDespués envía el mensaje otra vez.",
+        "start": "🇪🇸 ¡Hola! 👋\n\n🌐 ¡Bienvenido al bot traductor!\n\nElige un idioma o envía un mensaje.",
+        "about_text": "🤖 <b>Super Translator Bot</b>\n\n🌐 Traducción de texto\n📄 TXT y DOCX\n🎙 Traducción de voz\n🔊 Texto a voz\n🖼 Traducción de imágenes\n⭐ Favoritos\n\n👨‍💻 Desarrollador: @Foziljon20l0",
+        "help_text": "💡 <b>Cómo usarlo</b>\n\n1️⃣ Elige idioma.\n2️⃣ Envía texto.\n3️⃣ Envía TXT o DOCX.\n4️⃣ Envía voz.\n5️⃣ Envía una imagen con texto.\n6️⃣ Guarda con ⭐.\n7️⃣ Cambia idioma con 🌐."
+    },
+
+    "zh-CN": {
+        "about": "🤖 关于机器人",
+        "help": "💡 帮助",
+        "change_lang": "🌐 更改语言",
+        "favorites": "⭐ 收藏",
+        "select_new": "🌐 请选择语言:",
+        "language_changed": "✅ 语言已更改!",
+        "favorite_add": "⭐ 添加到收藏",
+        "favorite_added": "⭐ 已添加到收藏!",
+        "favorite_exists": "⭐ 已经收藏!",
+        "fav_empty": "⭐ 没有保存的翻译。",
+        "favorites_title": "⭐ <b>收藏:</b>",
+        "sub_required": "⚠️ 请先订阅以下频道:\n\n👉 @Matematikamilliysertifikat_F\n👉 @afkari_dan\n\n订阅后再次发送消息。",
+        "start": "🇨🇳 你好! 👋\n\n🌐 欢迎使用翻译机器人!\n\n请选择语言或发送消息。",
+        "about_text": "🤖 <b>Super Translator Bot</b>\n\n🌐 文本翻译\n📄 TXT 和 DOCX 翻译\n🎙 语音翻译\n🔊 语音朗读\n🖼 图片翻译\n⭐ 收藏\n\n👨‍💻 开发者: @Foziljon20l0",
+        "help_text": "💡 <b>使用方法</b>\n\n1️⃣ 选择语言。\n2️⃣ 发送文本。\n3️⃣ 发送 TXT 或 DOCX。\n4️⃣ 发送语音。\n5️⃣ 发送带文字的图片。\n6️⃣ 使用 ⭐ 收藏。\n7️⃣ 使用 🌐 更改语言。"
     }
 }
 
 
-def get_texts(chat_id):
-    lang = user_languages.get(chat_id, "uz")
-    return TEXTS.get(lang, TEXTS["uz"])
+# =========================================================
+# YORDAMCHI FUNKSIYALAR
+# =========================================================
+
+def get_lang(user_id):
+    if user_id not in user_languages:
+        user_languages[user_id] = "uz"
+    return user_languages[user_id]
 
 
-# =========================
-# OBUNANI TEKSHIRISH
-# =========================
+def txt(user_id, key):
+    lang = get_lang(user_id)
+    return TEXTS.get(lang, TEXTS["uz"]).get(key, TEXTS["uz"].get(key, ""))
+
+
+def add_user(user_id):
+    all_users.add(user_id)
+    get_lang(user_id)
+
+
+# =========================================================
+# OBUNA TEKSHIRISH
+# =========================================================
 
 def check_subscription(user_id):
+    """
+    Foydalanuvchi ikkala kanalga ham obuna bo'lganini tekshiradi.
+    Bot kanallarda admin bo'lishi kerak.
+    """
+
     for channel in CHANNELS:
         try:
             member = bot.get_chat_member(channel, user_id)
 
-            if member.status not in [
-                "member",
-                "administrator",
-                "creator"
-            ]:
+            if member.status in ["left", "kicked"]:
                 return False
 
-        except Exception:
-            # Agar kanal topilmasa yoki bot kanalga admin qilinmagan bo'lsa
+        except Exception as e:
+            print("Obuna tekshirish xatosi:", channel, e)
+
+            # Kanalni tekshirib bo'lmasa, foydalanuvchini o'tkazmaymiz.
             return False
 
     return True
 
 
-# =========================
-# MENYULAR
-# =========================
+def subscription_keyboard():
+    keyboard = types.InlineKeyboardMarkup(row_width=1)
 
-def get_main_keyboard(chat_id):
-    t = get_texts(chat_id)
-
-    markup = types.ReplyKeyboardMarkup(
-        resize_keyboard=True,
-        row_width=2
+    keyboard.add(
+        types.InlineKeyboardButton(
+            "📢 Matematikamilliysertifikat_F",
+            url="https://t.me/Matematikamilliysertifikat_F"
+        )
     )
 
-    markup.add(
-        types.KeyboardButton(t["about"]),
-        types.KeyboardButton(t["help"]),
-        types.KeyboardButton(t["change_lang"]),
-        types.KeyboardButton(t["favorites"])
+    keyboard.add(
+        types.InlineKeyboardButton(
+            "📢 afkari_dan",
+            url="https://t.me/afkari_dan"
+        )
     )
 
-    return markup
-
-
-def get_language_keyboard():
-    markup = types.ReplyKeyboardMarkup(
-        resize_keyboard=True,
-        row_width=2
+    keyboard.add(
+        types.InlineKeyboardButton(
+            "✅ Obunani tekshirish",
+            callback_data="check_sub"
+        )
     )
 
-    markup.add(
-        types.KeyboardButton("🇺🇿 O'zbekcha"),
-        types.KeyboardButton("🇷🇺 Русский"),
-        types.KeyboardButton("🇬🇧 English")
-    )
-
-    return markup
+    return keyboard
 
 
-# =========================
-# START
-# =========================
+def require_subscription(message):
+    add_user(message.from_user.id)
 
-@bot.message_handler(commands=["start"])
-def send_welcome(message):
-    chat_id = message.chat.id
-
-    all_users.add(chat_id)
-    user_languages.setdefault(chat_id, "uz")
+    if check_subscription(message.from_user.id):
+        return True
 
     bot.send_message(
-        chat_id,
-        "Assalomu alaykum! 👋\n\n"
-        "🌐 Tarjimon botga xush kelibsiz!\n\n"
-        "Tilni tanlang yoki tarjima qilish uchun "
-        "menga xabar yuboring.",
-        reply_markup=get_main_keyboard(chat_id)
+        message.chat.id,
+        txt(message.from_user.id, "sub_required"),
+        reply_markup=subscription_keyboard()
+    )
+
+    return False
+
+
+# =========================================================
+# ASOSIY MENYU
+# =========================================================
+
+def main_keyboard(user_id):
+    keyboard = types.ReplyKeyboardMarkup(
+        resize_keyboard=True,
+        row_width=2
+    )
+
+    keyboard.add(
+        types.KeyboardButton(txt(user_id, "about")),
+        types.KeyboardButton(txt(user_id, "help"))
+    )
+
+    keyboard.add(
+        types.KeyboardButton(txt(user_id, "change_lang")),
+        types.KeyboardButton(txt(user_id, "favorites"))
+    )
+
+    return keyboard
+
+
+# =========================================================
+# TIL TANLASH
+# =========================================================
+
+def language_keyboard():
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+
+    buttons = []
+
+    for code, name in LANGUAGES.items():
+        buttons.append(
+            types.InlineKeyboardButton(
+                name,
+                callback_data=f"lang:{code}"
+            )
+        )
+
+    keyboard.add(*buttons)
+
+    return keyboard
+
+
+# =========================================================
+# TARJIMA
+# =========================================================
+
+def translate_text(text, target):
+    if not text or not text.strip():
+        return ""
+
+    try:
+        translator = GoogleTranslator(
+            source="auto",
+            target=target
+        )
+
+        return translator.translate(text)
+
+    except Exception as e:
+        print("Translation error:", e)
+        return "❌ Tarjima qilishda xatolik yuz berdi."
+
+
+# =========================================================
+# FAVORITES
+# =========================================================
+
+def favorite_keyboard(user_id, translation):
+    keyboard = types.InlineKeyboardMarkup()
+
+    keyboard.add(
+        types.InlineKeyboardButton(
+            txt(user_id, "favorite_add"),
+            callback_data="fav:add"
+        )
+    )
+
+    return keyboard
+
+
+def save_favorite(user_id, text):
+    if user_id not in user_favorites:
+        user_favorites[user_id] = []
+
+    if text not in user_favorites[user_id]:
+        user_favorites[user_id].append(text)
+        return True
+
+    return False
+
+
+# =========================================================
+# TTS
+# =========================================================
+
+def create_voice(text, lang):
+    filename = tempfile.mktemp(suffix=".mp3")
+
+    try:
+        tts = gTTS(
+            text=text,
+            lang=TTS_LANGUAGES.get(lang, "en")
+        )
+
+        tts.save(filename)
+        return filename
+
+    except Exception as e:
+        print("TTS error:", e)
+
+        if os.path.exists(filename):
+            os.remove(filename)
+
+        return None
+
+
+# =========================================================
+# START
+# =========================================================
+
+@bot.message_handler(commands=["start"])
+def start_handler(message):
+    add_user(message.from_user.id)
+
+    bot.send_message(
+        message.chat.id,
+        txt(message.from_user.id, "start"),
+        reply_markup=main_keyboard(message.from_user.id)
+    )
+
+    bot.send_message(
+        message.chat.id,
+        txt(message.from_user.id, "select_new"),
+        reply_markup=language_keyboard()
     )
 
 
-# =========================
-# TIL O'ZGARTIRISH
-# =========================
+# =========================================================
+# HELP
+# =========================================================
+
+@bot.message_handler(commands=["help"])
+def help_command(message):
+    if not require_subscription(message):
+        return
+
+    bot.send_message(
+        message.chat.id,
+        txt(message.from_user.id, "help_text"),
+        reply_markup=main_keyboard(message.from_user.id)
+    )
+
+
+# =========================================================
+# ABOUT / HELP / LANGUAGE / FAVORITES
+# =========================================================
 
 @bot.message_handler(
     func=lambda message: message.text in [
-        "🇺🇿 O'zbekcha",
-        "🇷🇺 Русский",
-        "🇬🇧 English"
+        TEXTS[lang]["about"] for lang in TEXTS
     ]
 )
-def set_language(message):
-    chat_id = message.chat.id
-
-    if message.text == "🇺🇿 O'zbekcha":
-        user_languages[chat_id] = "uz"
-
-    elif message.text == "🇷🇺 Русский":
-        user_languages[chat_id] = "ru"
-
-    elif message.text == "🇬🇧 English":
-        user_languages[chat_id] = "en"
+def about_handler(message):
+    if not require_subscription(message):
+        return
 
     bot.send_message(
-        chat_id,
-        "✅ Til o'zgartirildi!",
-        reply_markup=get_main_keyboard(chat_id)
+        message.chat.id,
+        txt(message.from_user.id, "about_text"),
+        reply_markup=main_keyboard(message.from_user.id)
     )
 
 
-# =========================
-# OVOZ VA AUDIO
-# =========================
-
-@bot.message_handler(content_types=["voice", "audio"])
-def handle_voice_and_audio(message):
-    chat_id = message.chat.id
-
-    if not check_subscription(chat_id):
-        bot.reply_to(
-            message,
-            get_texts(chat_id)["sub_required"]
-        )
-        return
-
-    input_file = f"temp_{chat_id}.ogg"
-    wav_file = f"temp_{chat_id}.wav"
-
-    try:
-        bot.reply_to(
-            message,
-            "🎙 Ovoz qabul qilindi, matnga aylantirilmoqda..."
-        )
-
-        if message.content_type == "voice":
-            file_info = bot.get_file(message.voice.file_id)
-        else:
-            file_info = bot.get_file(message.audio.file_id)
-
-        downloaded_file = bot.download_file(
-            file_info.file_path
-        )
-
-        with open(input_file, "wb") as f:
-            f.write(downloaded_file)
-
-        sound = AudioSegment.from_file(input_file)
-        sound.export(wav_file, format="wav")
-
-        recognizer = sr.Recognizer()
-
-        with sr.AudioFile(wav_file) as source:
-            audio_data = recognizer.record(source)
-
-        text = recognizer.recognize_google(
-            audio_data,
-            language="uz-UZ"
-        )
-
-        if not text.strip():
-            bot.reply_to(
-                message,
-                "❌ Ovozdan matn topilmadi."
-            )
-            return
-
-        lang = user_languages.get(chat_id, "uz")
-
-        translated = GoogleTranslator(
-            source="auto",
-            target=lang
-        ).translate(text)
-
-        response = (
-            f"🗣 <b>Eshitilgan matn:</b>\n{text}\n\n"
-            f"🌐 <b>Tarjima:</b>\n{translated}"
-        )
-
-        bot.reply_to(
-            message,
-            response,
-            parse_mode="HTML"
-        )
-
-    except sr.UnknownValueError:
-        bot.reply_to(
-            message,
-            "❌ Ovozdagi gapni tushunib bo'lmadi."
-        )
-
-    except Exception as e:
-        print("Audio error:", e)
-        bot.reply_to(
-            message,
-            "❌ Ovozli xabarni qayta ishlashda xatolik yuz berdi."
-        )
-
-    finally:
-        for file in [input_file, wav_file]:
-            if os.path.exists(file):
-                os.remove(file)
-
-
-# =========================
-# RASM
-# =========================
-
-@bot.message_handler(content_types=["photo"])
-def handle_photo(message):
-    chat_id = message.chat.id
-
-    if not check_subscription(chat_id):
-        bot.reply_to(
-            message,
-            get_texts(chat_id)["sub_required"]
-        )
-        return
-
-    image_path = f"temp_{chat_id}.jpg"
-
-    try:
-        bot.reply_to(
-            message,
-            "🖼 Rasm qabul qilindi, matn o'qilmoqda..."
-        )
-
-        file_id = message.photo[-1].file_id
-        file_info = bot.get_file(file_id)
-
-        downloaded_file = bot.download_file(
-            file_info.file_path
-        )
-
-        with open(image_path, "wb") as f:
-            f.write(downloaded_file)
-
-        img = Image.open(image_path)
-
-        # Serverda faqat mavjud OCR tillaridan foydalanamiz
-        extracted_text = pytesseract.image_to_string(
-            img,
-            lang="eng+rus"
-        )
-
-        if not extracted_text.strip():
-            bot.reply_to(
-                message,
-                "❌ Rasmdan matn topilmadi."
-            )
-            return
-
-        lang = user_languages.get(chat_id, "uz")
-
-        translated = GoogleTranslator(
-            source="auto",
-            target=lang
-        ).translate(extracted_text)
-
-        response = (
-            f"📄 <b>Topilgan matn:</b>\n"
-            f"{extracted_text}\n\n"
-            f"🌐 <b>Tarjima:</b>\n"
-            f"{translated}"
-        )
-
-        bot.reply_to(
-            message,
-            response,
-            parse_mode="HTML"
-        )
-
-    except Exception as e:
-        print("Photo error:", e)
-        bot.reply_to(
-            message,
-            "❌ Rasmni qayta ishlashda xatolik yuz berdi."
-        )
-
-    finally:
-        if os.path.exists(image_path):
-            os.remove(image_path)
-
-
-# =========================
-# HUJJATLAR
-# =========================
-
-@bot.message_handler(content_types=["document"])
-def handle_document(message):
-    chat_id = message.chat.id
-
-    if not check_subscription(chat_id):
-        bot.reply_to(
-            message,
-            get_texts(chat_id)["sub_required"]
-        )
-        return
-
-    temp_file = f"temp_{chat_id}.docx"
-
-    try:
-        file_name = message.document.file_name.lower()
-
-        if not (
-            file_name.endswith(".txt")
-            or file_name.endswith(".docx")
-        ):
-            bot.reply_to(
-                message,
-                "❌ Faqat .txt va .docx fayllar qabul qilinadi."
-            )
-            return
-
-        file_info = bot.get_file(
-            message.document.file_id
-        )
-
-        downloaded_file = bot.download_file(
-            file_info.file_path
-        )
-
-        if file_name.endswith(".txt"):
-            text_content = downloaded_file.decode(
-                "utf-8",
-                errors="ignore"
-            )
-
-        else:
-            with open(temp_file, "wb") as f:
-                f.write(downloaded_file)
-
-            doc = Document(temp_file)
-
-            text_content = "\n".join(
-                p.text for p in doc.paragraphs
-            )
-
-        if not text_content.strip():
-            bot.reply_to(
-                message,
-                "❌ Fayl bo'sh yoki o'qib bo'lmadi."
-            )
-            return
-
-        lang = user_languages.get(chat_id, "uz")
-
-        translated_text = GoogleTranslator(
-            source="auto",
-            target=lang
-        ).translate(text_content)
-
-        output_name = f"translated_{file_name}"
-
-        if file_name.endswith(".txt"):
-
-            with open(
-                output_name,
-                "w",
-                encoding="utf-8"
-            ) as f:
-                f.write(translated_text)
-
-        else:
-            new_doc = Document()
-
-            for line in translated_text.split("\n"):
-                new_doc.add_paragraph(line)
-
-            new_doc.save(output_name)
-
-        with open(output_name, "rb") as f:
-            bot.send_document(
-                chat_id,
-                f,
-                caption="📄 Mana tarjima qilingan hujjatingiz!"
-            )
-
-        if os.path.exists(output_name):
-            os.remove(output_name)
-
-    except Exception as e:
-        print("Document error:", e)
-        bot.reply_to(
-            message,
-            "❌ Hujjatni tarjima qilishda xatolik yuz berdi."
-        )
-
-    finally:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
-
-
-# =========================
-# MATN VA MENYU
-# =========================
-
-@bot.message_handler(func=lambda message: True)
-def handle_text(message):
-    if not message.text:
-        return
-
-    chat_id = message.chat.id
-
-    all_users.add(chat_id)
-
-    lang = user_languages.get(chat_id, "uz")
-    t = TEXTS.get(lang, TEXTS["uz"])
-
-    # ABOUT
-    if message.text in [
-        TEXTS["uz"]["about"],
-        TEXTS["ru"]["about"],
-        TEXTS["en"]["about"]
-    ]:
-        bot.send_message(
-            chat_id,
-            t["about_text"],
-            parse_mode="HTML"
-        )
-        return
-
-    # HELP
-    if message.text in [
-        TEXTS["uz"]["help"],
-        TEXTS["ru"]["help"],
-        TEXTS["en"]["help"]
-    ]:
-        bot.send_message(
-            chat_id,
-            t["help_text"],
-            parse_mode="HTML"
-        )
-        return
-
-    # CHANGE LANGUAGE
-    if message.text in [
-        TEXTS["uz"]["change_lang"],
-        TEXTS["ru"]["change_lang"],
-        TEXTS["en"]["change_lang"]
-    ]:
-        bot.send_message(
-            chat_id,
-            t["select_new"],
-            reply_markup=get_language_keyboard()
-        )
-        return
-
-    # FAVORITES
-    if message.text in [
-        TEXTS["uz"]["favorites"],
-        TEXTS["ru"]["favorites"],
-        TEXTS["en"]["favorites"]
-    ]:
-        favs = user_favorites.get(chat_id, [])
-
-        if not favs:
-            bot.send_message(
-                chat_id,
-                t["fav_empty"]
-            )
-        else:
-            bot.send_message(
-                chat_id,
-                "⭐ <b>Sevimlilar:</b>\n\n"
-                + "\n".join(favs),
-                parse_mode="HTML"
-            )
-        return
-
-    # OBUNA
-    if not check_subscription(chat_id):
-        bot.reply_to(
-            message,
-            t["sub_required"]
-        )
-        return
-
-    # TARJIMA
-    try:
-        word = message.text.strip()
-
-        if not word:
-            return
-
-        translated = GoogleTranslator(
-            source="auto",
-            target=lang
-        ).translate(word)
-
-        if len(word.split()) == 1:
-            response_text = (
-                f"📖 <b>So'z:</b> {word}\n\n"
-                f"🌐 <b>Tarjima:</b> {translated}\n\n"
-                "💡 So'z kontekstga qarab boshqa "
-                "ma'nolarga ham ega bo'lishi mumkin."
-            )
-        else:
-            response_text = (
-                f"🌐 <b>Tarjima:</b>\n{translated}"
-            )
-
-        # Sevimliga qo'shish
-        user_favorites.setdefault(chat_id, [])
-
-        fav_item = f"{word} — {translated}"
-
-        if fav_item not in user_favorites[chat_id]:
-            user_favorites[chat_id].append(fav_item)
-
-        # Ovoz
-        tts_file = f"tts_{chat_id}.mp3"
-
-        tts_lang = {
-            "uz": "en",
-            "ru": "ru",
-            "en": "en"
-        }.get(lang, "en")
-
-        tts = gTTS(
-            text=translated,
-            lang=tts_lang
-        )
-
-        tts.save(tts_file)
-
-        with open(tts_file, "rb") as audio:
-            bot.send_voice(
-                chat_id,
-                audio,
-                reply_to_message_id=message.message_id
-            )
-
-        if os.path.exists(tts_file):
-            os.remove(tts_file)
-
-        bot.reply_to(
-            message,
-            response_text,
-            parse_mode="HTML"
-        )
-
-    except Exception as e:
-        print("Text translation error:", e)
-
-        bot.reply_to(
-            message,
-            "❌ Tarjima qilishda xatolik yuz berdi."
-        )
-
-
-# =========================
-# FLASK SERVER
-# =========================
-
-app = Flask(__name__)
-
-
-@app.route("/")
-def home():
-    return "Telegram bot ishlayapti!"
-
-
-def run_server():
-    port = int(os.environ.get("PORT", 8080))
-
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
-
-
-def keep_alive():
-    thread = threading.Thread(
-        target=run_server,
-        daemon=True
-    )
-    thread.start()
-
-
-# =========================
-# BOTNI ISHGA TUSHIRISH
-# =========================
-
-if __name__ == "__main__":
-    keep_alive()
-
-    print("🤖 Bot ishga tushdi!")
-
-    bot.infinity_polling(
-        skip_pending=True,
-        timeout=60,
-        long_polling_timeout=60
-)
+@bot.message_handler(
+    func=lambda message: message.text in [
+        TEXTS[
