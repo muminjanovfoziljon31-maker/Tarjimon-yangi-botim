@@ -557,4 +557,674 @@ def about_handler(message):
 
 @bot.message_handler(
     func=lambda message: message.text in [
-        TEXTS[
+        TEXTS[lang]["help"] for lang in TEXTS
+    ]
+)
+def help_button_handler(message):
+    if not require_subscription(message):
+        return
+
+    bot.send_message(
+        message.chat.id,
+        txt(message.from_user.id, "help_text"),
+        reply_markup=main_keyboard(message.from_user.id)
+    )
+
+
+@bot.message_handler(
+    func=lambda message: message.text in [
+        TEXTS[lang]["change_lang"] for lang in TEXTS
+    ]
+)
+def change_language_handler(message):
+    if not require_subscription(message):
+        return
+
+    bot.send_message(
+        message.chat.id,
+        txt(message.from_user.id, "select_new"),
+        reply_markup=language_keyboard()
+    )
+
+
+@bot.message_handler(
+    func=lambda message: message.text in [
+        TEXTS[lang]["favorites"] for lang in TEXTS
+    ]
+)
+def favorites_handler(message):
+    if not require_subscription(message):
+        return
+
+    user_id = message.from_user.id
+    favorites = user_favorites.get(user_id, [])
+
+    if not favorites:
+        bot.send_message(
+            message.chat.id,
+            txt(user_id, "fav_empty"),
+            reply_markup=main_keyboard(user_id)
+        )
+        return
+
+    result = txt(user_id, "favorites_title") + "\n\n"
+
+    for i, favorite in enumerate(favorites, 1):
+        result += f"{i}. {favorite}\n\n"
+
+    bot.send_message(
+        message.chat.id,
+        result,
+        reply_markup=main_keyboard(user_id)
+    )
+
+
+# =========================================================
+# LANGUAGE SELECTION
+# =========================================================
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("lang:")
+)
+def language_callback(call):
+
+    lang = call.data.split(":", 1)[1]
+
+    if lang not in LANGUAGES:
+        return
+
+    user_languages[call.from_user.id] = lang
+    all_users.add(call.from_user.id)
+
+    bot.answer_callback_query(
+        call.id,
+        txt(call.from_user.id, "language_changed")
+    )
+
+    try:
+        bot.edit_message_text(
+            txt(call.from_user.id, "language_changed"),
+            call.message.chat.id,
+            call.message.message_id,
+            reply_markup=main_keyboard(call.from_user.id)
+        )
+    except Exception:
+        bot.send_message(
+            call.message.chat.id,
+            txt(call.from_user.id, "language_changed"),
+            reply_markup=main_keyboard(call.from_user.id)
+        )
+
+
+# =========================================================
+# FAVORITES CALLBACK
+# =========================================================
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.startswith("fav:")
+)
+def favorite_callback(call):
+
+    try:
+        data = call.data.split(":", 1)
+        action = data[1]
+
+        user_id = call.from_user.id
+
+        if action == "add":
+
+            text = call.message.text or ""
+
+            if "🌐 <b>Tarjima:</b>\n\n" in text:
+                translation = text.split(
+                    "🌐 <b>Tarjima:</b>\n\n",
+                    1
+                )[1]
+            else:
+                translation = text
+
+            if user_id not in user_favorites:
+                user_favorites[user_id] = []
+
+            if translation in user_favorites[user_id]:
+
+                bot.answer_callback_query(
+                    call.id,
+                    txt(user_id, "favorite_exists")
+                )
+
+            else:
+
+                user_favorites[user_id].append(
+                    translation
+                )
+
+                bot.answer_callback_query(
+                    call.id,
+                    txt(user_id, "favorite_added")
+                )
+
+        elif action == "remove":
+
+            bot.answer_callback_query(
+                call.id,
+                txt(user_id, "favorite_removed")
+            )
+
+    except Exception as e:
+        print("Favorite error:", e)
+
+
+# =========================================================
+# PHOTO / IMAGE
+# =========================================================
+
+@bot.message_handler(content_types=["photo"])
+def photo_handler(message):
+
+    if not require_subscription(message):
+        return
+
+    try:
+
+        file_info = bot.get_file(
+            message.photo[-1].file_id
+        )
+
+        downloaded = bot.download_file(
+            file_info.file_path
+        )
+
+        image_path = tempfile.mktemp(
+            suffix=".jpg"
+        )
+
+        with open(image_path, "wb") as f:
+            f.write(downloaded)
+
+        image = Image.open(image_path)
+
+        extracted_text = pytesseract.image_to_string(
+            image,
+            lang="eng"
+        )
+
+        os.remove(image_path)
+
+        if not extracted_text.strip():
+
+            bot.send_message(
+                message.chat.id,
+                "❌ Rasmda matn topilmadi."
+            )
+
+            return
+
+        target = get_lang(
+            message.from_user.id
+        )
+
+        result = translate_text(
+            extracted_text,
+            target
+        )
+
+        bot.send_message(
+            message.chat.id,
+            f"🖼 <b>Rasmdagi matn:</b>\n\n"
+            f"{extracted_text}\n\n"
+            f"🌐 <b>Tarjima:</b>\n\n"
+            f"{result}",
+            reply_markup=favorite_keyboard(
+                message.from_user.id,
+                result
+            )
+        )
+
+        send_tts(
+            message.chat.id,
+            result,
+            target
+        )
+
+    except Exception as e:
+
+        print("Photo error:", e)
+
+        bot.send_message(
+            message.chat.id,
+            "❌ Rasmni qayta ishlashda xatolik yuz berdi."
+        )
+
+
+# =========================================================
+# VOICE
+# =========================================================
+
+@bot.message_handler(content_types=["voice"])
+def voice_handler(message):
+
+    if not require_subscription(message):
+        return
+
+    input_file = None
+    wav_file = None
+
+    try:
+
+        file_info = bot.get_file(
+            message.voice.file_id
+        )
+
+        downloaded = bot.download_file(
+            file_info.file_path
+        )
+
+        input_file = tempfile.mktemp(
+            suffix=".ogg"
+        )
+
+        wav_file = tempfile.mktemp(
+            suffix=".wav"
+        )
+
+        with open(input_file, "wb") as f:
+            f.write(downloaded)
+
+        audio = AudioSegment.from_file(
+            input_file,
+            format="ogg"
+        )
+
+        audio.export(
+            wav_file,
+            format="wav"
+        )
+
+        recognizer = sr.Recognizer()
+
+        with sr.AudioFile(wav_file) as source:
+
+            audio_data = recognizer.record(
+                source
+            )
+
+        recognized = recognizer.recognize_google(
+            audio_data
+        )
+
+        target = get_lang(
+            message.from_user.id
+        )
+
+        result = translate_text(
+            recognized,
+            target
+        )
+
+        bot.send_message(
+            message.chat.id,
+            f"🎙 <b>Matn:</b>\n\n"
+            f"{recognized}\n\n"
+            f"🌐 <b>Tarjima:</b>\n\n"
+            f"{result}",
+            reply_markup=favorite_keyboard(
+                message.from_user.id,
+                result
+            )
+        )
+
+        send_tts(
+            message.chat.id,
+            result,
+            target
+        )
+
+    except sr.UnknownValueError:
+
+        bot.send_message(
+            message.chat.id,
+            "❌ Ovozdagi gapni tushunib bo'lmadi."
+        )
+
+    except Exception as e:
+
+        print("Voice error:", e)
+
+        bot.send_message(
+            message.chat.id,
+            "❌ Ovozli xabarni qayta ishlashda xatolik."
+        )
+
+    finally:
+
+        for file_path in [
+            input_file,
+            wav_file
+        ]:
+
+            if file_path and os.path.exists(
+                file_path
+            ):
+
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+
+
+# =========================================================
+# AUDIO FILE
+# =========================================================
+
+@bot.message_handler(content_types=["audio"])
+def audio_handler(message):
+
+    if not require_subscription(message):
+        return
+
+    bot.send_message(
+        message.chat.id,
+        "🎵 Audio fayl qabul qilindi. Qayta ishlanmoqda..."
+    )
+
+    input_file = None
+    wav_file = None
+
+    try:
+
+        file_info = bot.get_file(
+            message.audio.file_id
+        )
+
+        downloaded = bot.download_file(
+            file_info.file_path
+        )
+
+        input_file = tempfile.mktemp(
+            suffix=".mp3"
+        )
+
+        wav_file = tempfile.mktemp(
+            suffix=".wav"
+        )
+
+        with open(input_file, "wb") as f:
+            f.write(downloaded)
+
+        audio = AudioSegment.from_file(
+            input_file
+        )
+
+        audio.export(
+            wav_file,
+            format="wav"
+        )
+
+        recognizer = sr.Recognizer()
+
+        with sr.AudioFile(wav_file) as source:
+
+            audio_data = recognizer.record(
+                source
+            )
+
+        recognized = recognizer.recognize_google(
+            audio_data
+        )
+
+        target = get_lang(
+            message.from_user.id
+        )
+
+        result = translate_text(
+            recognized,
+            target
+        )
+
+        bot.send_message(
+            message.chat.id,
+            f"🎵 <b>Matn:</b>\n\n"
+            f"{recognized}\n\n"
+            f"🌐 <b>Tarjima:</b>\n\n"
+            f"{result}",
+            reply_markup=favorite_keyboard(
+                message.from_user.id,
+                result
+            )
+        )
+
+        send_tts(
+            message.chat.id,
+            result,
+            target
+        )
+
+    except Exception as e:
+
+        print("Audio error:", e)
+
+        bot.send_message(
+            message.chat.id,
+            "❌ Audio faylni qayta ishlashda xatolik."
+        )
+
+    finally:
+
+        for file_path in [
+            input_file,
+            wav_file
+        ]:
+
+            if file_path and os.path.exists(
+                file_path
+            ):
+
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+
+
+# =========================================================
+# DOCUMENT / FILE
+# =========================================================
+
+@bot.message_handler(content_types=["document"])
+def document_handler(message):
+
+    if not require_subscription(message):
+        return
+
+    filename = (
+        message.document.file_name or ""
+    ).lower()
+
+    if not (
+        filename.endswith(".txt")
+        or filename.endswith(".docx")
+    ):
+
+        bot.send_message(
+            message.chat.id,
+            "❌ Faqat .txt va .docx fayllar "
+            "qo'llab-quvvatlanadi."
+        )
+
+        return
+
+    local_file = None
+
+    try:
+
+        file_info = bot.get_file(
+            message.document.file_id
+        )
+
+        downloaded = bot.download_file(
+            file_info.file_path
+        )
+
+        extension = os.path.splitext(
+            filename
+        )[1]
+
+        local_file = tempfile.mktemp(
+            suffix=extension
+        )
+
+        with open(local_file, "wb") as f:
+            f.write(downloaded)
+
+        if filename.endswith(".txt"):
+
+            with open(
+                local_file,
+                "r",
+                encoding="utf-8",
+                errors="ignore"
+            ) as f:
+
+                text = f.read()
+
+        else:
+
+            document = Document(
+                local_file
+            )
+
+            paragraphs = []
+
+            for paragraph in document.paragraphs:
+
+                if paragraph.text.strip():
+                    paragraphs.append(
+                        paragraph.text
+                    )
+
+            text = "\n".join(
+                paragraphs
+            )
+
+        if not text.strip():
+
+            bot.send_message(
+                message.chat.id,
+                "❌ Faylda matn topilmadi."
+            )
+
+            return
+
+        target = get_lang(
+            message.from_user.id
+        )
+
+        result = translate_text(
+            text,
+            target
+        )
+
+        for i in range(
+            0,
+            len(result),
+            3500
+        ):
+
+            bot.send_message(
+                message.chat.id,
+                result[i:i + 3500]
+            )
+
+    except Exception as e:
+
+        print("Document error:", e)
+
+        bot.send_message(
+            message.chat.id,
+            "❌ Faylni tarjima qilishda xatolik."
+        )
+
+    finally:
+
+        if local_file and os.path.exists(
+            local_file
+        ):
+
+            try:
+                os.remove(local_file)
+            except:
+                pass
+
+
+# =========================================================
+# TEXT
+# =========================================================
+
+@bot.message_handler(
+    content_types=["text"]
+)
+def text_handler(message):
+
+    if not require_subscription(message):
+        return
+
+    text = message.text.strip()
+
+    if text.startswith("/"):
+        return
+
+    target = get_lang(
+        message.from_user.id
+    )
+
+    result = translate_text(
+        text,
+        target
+    )
+
+    bot.send_message(
+        message.chat.id,
+        f"🌐 <b>Tarjima:</b>\n\n{result}",
+        reply_markup=favorite_keyboard(
+            message.from_user.id,
+            result
+        )
+    )
+
+    send_tts(
+        message.chat.id,
+        result,
+        target
+    )
+
+
+# =========================================================
+# FLASK
+# =========================================================
+
+app = Flask(__name__)
+
+
+@app.route("/")
+def home():
+    return "Super Translator Bot is running!"
+
+
+# =========================================================
+# RUN
+# =========================================================
+
+def run_bot():
+
+    print("Bot ishga tushdi...")
+
+    bot.infinity_polling(
+        skip_pending=True,
+        timeout=60,
+        long_polling_timeout=60
+    )
+
+
+if __name__ == "__main__":
+
+   
