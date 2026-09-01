@@ -956,5 +956,490 @@ def change_language_handler(message):
     ]
 )
 def favorites_handler(message):
+    user_id = message.from_user.id
 
-    user_id = message.f
+    favorites = user_favorites.get(
+        user_id,
+        []
+    )
+
+    if not favorites:
+
+        bot.send_message(
+            message.chat.id,
+            txt(
+                user_id,
+                "favorites_empty"
+            ),
+            reply_markup=main_keyboard(user_id)
+        )
+
+        return
+
+    result = txt(
+        user_id,
+        "favorites_title"
+    )
+
+    for i, favorite in enumerate(
+        favorites,
+        1
+    ):
+
+        result += (
+            f"{i}. {favorite}\n\n"
+        )
+
+    bot.send_message(
+        message.chat.id,
+        result,
+        reply_markup=main_keyboard(user_id)
+    )
+
+
+# =========================================================
+# LANGUAGE CALLBACK
+# =========================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+    call.data.startswith("lang:")
+)
+def language_callback(call):
+
+    lang = call.data.split(
+        ":",
+        1
+    )[1]
+
+    if lang not in LANGUAGES:
+        return
+
+    user_id = call.from_user.id
+
+    user_languages[user_id] = lang
+
+    bot.answer_callback_query(
+        call.id,
+        txt(
+            user_id,
+            "language_changed"
+        )
+    )
+
+    try:
+
+        bot.edit_message_text(
+            txt(
+                user_id,
+                "language_changed"
+            ),
+            call.message.chat.id,
+            call.message.message_id
+        )
+
+    except Exception:
+
+        pass
+
+    bot.send_message(
+        call.message.chat.id,
+        txt(
+            user_id,
+            "language_changed"
+        ),
+        reply_markup=main_keyboard(user_id)
+    )
+
+
+# =========================================================
+# FAVORITE CALLBACK
+# =========================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+    call.data == "favorite:add"
+)
+def favorite_callback(call):
+
+    user_id = call.from_user.id
+
+    text = call.message.text or ""
+
+    if save_favorite(
+        user_id,
+        text
+    ):
+
+        bot.answer_callback_query(
+            call.id,
+            txt(
+                user_id,
+                "favorite_added"
+            )
+        )
+
+    else:
+
+        bot.answer_callback_query(
+            call.id,
+            txt(
+                user_id,
+                "favorite_exists"
+            )
+        )
+
+
+# =========================================================
+# VIDEO OCR
+# =========================================================
+
+def extract_video_text(video_path):
+
+    texts = []
+
+    video = None
+
+    try:
+
+        video = VideoFileClip(
+            video_path
+        )
+
+        duration = video.duration
+
+        # Maksimal 12 ta kadr tekshiriladi
+        frame_count = min(
+            12,
+            max(
+                1,
+                int(duration / 2)
+            )
+        )
+
+        for i in range(
+            frame_count
+        ):
+
+            if frame_count == 1:
+
+                timestamp = 0
+
+            else:
+
+                timestamp = (
+                    duration
+                    * i
+                    / (frame_count - 1)
+                )
+
+            try:
+
+                frame = video.get_frame(
+                    timestamp
+                )
+
+                image = Image.fromarray(
+                    frame
+                )
+
+                # Faqat ekrandagi yozuv
+                # Audio umuman ishlatilmaydi
+                text = pytesseract.image_to_string(
+                    image,
+                    lang="eng"
+                )
+
+                text = text.strip()
+
+                if not text:
+                    continue
+
+                for line in text.splitlines():
+
+                    line = line.strip()
+
+                    if (
+                        line
+                        and line not in texts
+                    ):
+
+                        texts.append(line)
+
+            except Exception as e:
+
+                print(
+                    "Frame OCR error:",
+                    e
+                )
+
+        return "\n".join(texts)
+
+    except Exception as e:
+
+        print(
+            "Video OCR error:",
+            e
+        )
+
+        return ""
+
+    finally:
+
+        if video is not None:
+
+            try:
+                video.close()
+            except Exception:
+                pass
+
+
+# =========================================================
+# VIDEO HANDLER
+# =========================================================
+
+@bot.message_handler(
+    content_types=["video"]
+)
+def video_handler(message):
+
+    user_id = message.from_user.id
+
+    bot.send_message(
+        message.chat.id,
+        txt(
+            user_id,
+            "video_processing"
+        )
+    )
+
+    video_path = None
+
+    try:
+
+        file_info = bot.get_file(
+            message.video.file_id
+        )
+
+        downloaded = bot.download_file(
+            file_info.file_path
+        )
+
+        video_path = tempfile.mktemp(
+            suffix=".mp4"
+        )
+
+        with open(
+            video_path,
+            "wb"
+        ) as file:
+
+            file.write(downloaded)
+
+        # Faqat videodagi yozuvlar
+        extracted_text = extract_video_text(
+            video_path
+        )
+
+        if not extracted_text.strip():
+
+            bot.send_message(
+                message.chat.id,
+                txt(
+                    user_id,
+                    "video_no_text"
+                )
+            )
+
+            return
+
+        target = get_lang(
+            user_id
+        )
+
+        result = translate_text(
+            extracted_text,
+            target
+        )
+
+        if not result:
+
+            bot.send_message(
+                message.chat.id,
+                txt(
+                    user_id,
+                    "translation_error"
+                )
+            )
+
+            return
+
+        bot.send_message(
+            message.chat.id,
+            "🎬 <b>Videodagi yozuv:</b>\n\n"
+            f"{extracted_text}\n\n"
+            "🌐 <b>Tarjima:</b>\n\n"
+            f"{result}",
+            reply_markup=favorite_keyboard()
+        )
+
+    except Exception as e:
+
+        print(
+            "Video error:",
+            e
+        )
+
+        bot.send_message(
+            message.chat.id,
+            txt(
+                user_id,
+                "video_error"
+            )
+        )
+
+    finally:
+
+        if (
+            video_path
+            and os.path.exists(video_path)
+        ):
+
+            try:
+                os.remove(video_path)
+            except Exception:
+                pass
+
+
+# =========================================================
+# TEXT HANDLER
+# =========================================================
+
+@bot.message_handler(
+    content_types=["text"]
+)
+def text_handler(message):
+
+    user_id = message.from_user.id
+
+    text = message.text.strip()
+
+    if not text:
+
+        bot.send_message(
+            message.chat.id,
+            txt(
+                user_id,
+                "empty_text"
+            )
+        )
+
+        return
+
+    # Buyruqlarni o'tkazib yuboramiz
+    if text.startswith("/"):
+        return
+
+    target = get_lang(
+        user_id
+    )
+
+    # Asosiy tarjima
+    result = translate_text(
+        text,
+        target
+    )
+
+    if not result:
+
+        bot.send_message(
+            message.chat.id,
+            txt(
+                user_id,
+                "translation_error"
+            )
+        )
+
+        return
+
+    # Natija
+    response = (
+        "🌐 <b>Tarjima:</b>\n\n"
+        f"{result}"
+    )
+
+    # Agar bitta so'z bo'lsa,
+    # qo'shimcha ma'nolarni ko'rsatamiz
+    if len(text.split()) == 1:
+
+        meanings = get_word_meanings(
+            text,
+            target
+        )
+
+        if meanings:
+
+            response += (
+                "\n\n📚 <b>Asosiy ma'nolari:</b>\n\n"
+                + "\n".join(meanings)
+            )
+
+    bot.send_message(
+        message.chat.id,
+        response,
+        reply_markup=favorite_keyboard()
+    )
+
+
+# =========================================================
+# FLASK
+# =========================================================
+
+app = Flask(__name__)
+
+
+@app.route("/")
+def home():
+
+    return "Fast Translator Bot is running!"
+
+
+# =========================================================
+# BOTNI ISHGA TUSHIRISH
+# =========================================================
+
+def run_bot():
+
+    print(
+        "Fast Translator Bot ishga tushdi..."
+    )
+
+    bot.infinity_polling(
+        skip_pending=True,
+        timeout=60,
+        long_polling_timeout=60
+    )
+
+
+# =========================================================
+# START
+# =========================================================
+
+if __name__ == "__main__":
+
+    threading.Thread(
+        target=run_bot,
+        daemon=True
+    ).start()
+
+    port = int(
+        os.environ.get(
+            "PORT",
+            8080
+        )
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+            )
