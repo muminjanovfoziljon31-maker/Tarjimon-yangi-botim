@@ -1,9 +1,8 @@
 pyTelegramBotAPI
 deep-translator
-gTTS
-python-docx
-SpeechRecognition
-pydub
-pytesseract
 Pillow
+pytesseract
+moviepy
 Flask
+requests
+imageio-ffmpeg
