@@ -1,683 +1,640 @@
+# ============================================================
+# SUPER TARJIMON BOT
+# 6 TIL + RASM TARJIMASI + SO'Z MA'NOLARI
+# ============================================================
+
 import os
+import re
+import io
+import json
+import logging
 import tempfile
-import threading
-import requests
+import urllib.request
+import urllib.parse
+from typing import Optional
 
 import telebot
 from telebot import types
+
 from deep_translator import GoogleTranslator
-from PIL import Image
+
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import pytesseract
-from moviepy import VideoFileClip
-from flask import Flask
 
 
-# =========================================================
-# BOT SOZLAMALARI
-# =========================================================
+# ============================================================
+# SOZLAMALAR
+# ============================================================
 
 TOKEN = os.getenv("BOT_TOKEN")
 
 if not TOKEN:
-    raise ValueError("BOT_TOKEN kiritilmagan!")
+    raise RuntimeError(
+        "BOT_TOKEN topilmadi. Hostingdagi Environment Variables "
+        "bo'limiga BOT_TOKEN ni qo'shing."
+    )
 
-bot = telebot.TeleBot(
-    TOKEN,
-    parse_mode="HTML"
+
+# ============================================================
+# BOT
+# ============================================================
+
+bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-
-# =========================================================
-# FOYDALANUVCHI MA'LUMOTLARI
-# =========================================================
-
-user_languages = {}
-user_favorites = {}
+logger = logging.getLogger(__name__)
 
 
-# =========================================================
-# 6 TA TIL
-# =========================================================
+# ============================================================
+# TILLAR
+# ============================================================
 
 LANGUAGES = {
-    "uz": "🇺🇿 O'zbekcha",
-    "en": "🇬🇧 English",
-    "ru": "🇷🇺 Русский",
-    "ar": "🇸🇦 العربية",
-    "ko": "🇰🇷 한국어",
-    "zh-CN": "🇨🇳 中文"
-}
-
-
-# =========================================================
-# BOT MATNLARI
-# =========================================================
-
-TEXTS = {
-
-    # =====================================================
-    # O'ZBEKCHA
-    # =====================================================
-
     "uz": {
-
-        "about": "🤖 Bot haqida",
-        "help": "❓ Yordam",
-        "change_lang": "🌐 Tilni o'zgartirish",
-        "favorites": "⭐ Sevimlilar",
-
-        "choose_lang":
-            "🌐 Kerakli tilni tanlang:",
-
-        "language_changed":
-            "✅ Til muvaffaqiyatli o'zgartirildi!",
-
-        "start": (
-            "👋 Assalomu alaykum!\n\n"
-            "🤖 <b>Fast Translator</b> botiga xush kelibsiz!\n\n"
-            "📝 So'z yoki matn yuboring.\n"
-            "🎬 Video yuborsangiz, videodagi "
-            "ko'rinadigan yozuvlarni tarjima qilaman."
-        ),
-
-        "about_text": (
-            "🤖 <b>FAST TRANSLATOR</b>\n\n"
-            "📝 Matn va so'z tarjimasi\n"
-            "📚 Ko'p ma'noli so'zlar\n"
-            "🎬 Videodagi yozuvlarni tarjima qilish\n"
-            "🌐 6 ta til\n"
-            "⭐ Sevimlilar\n"
-            "❓ Yordam\n"
-            "📱 Qulay menyu\n\n"
-            "🔇 Video ovozi tarjima qilinmaydi.\n\n"
-            "👨‍💻 <b>Bot yaratuvchisi:</b> @Foziljon20l0"
-        ),
-
-        "help_text": (
-            "❓ <b>YORDAM</b>\n\n"
-
-            "📝 <b>Matn tarjimasi</b>\n"
-            "Istalgan so'z yoki gapni yuboring. "
-            "Bot uni tanlangan tilga tarjima qiladi.\n\n"
-
-            "📚 <b>Ko'p ma'noli so'zlar</b>\n"
-            "Masalan, <b>book</b> kabi so'zlarda "
-            "mavjud asosiy ma'nolar ham ko'rsatiladi.\n\n"
-
-                       "🎬 <b>Video tarjimasi</b>\n"
-            "Video yuboring. Bot videodagi ko'rinadigan "
-            "yozuvlarni aniqlaydi va tanlangan tilga tarjima qiladi.\n\n"
-
-            "🔇 <b>Muhim:</b> Videodagi ovoz tarjima qilinmaydi. "
-            "Faqat videodagi yozuvlar tarjima qilinadi.\n\n"
-
-            "⭐ <b>Sevimlilar</b>\n"
-            "Tarjima ostidagi ⭐ tugmasini bosib, "
-            "tarjimani saqlab qo'yishingiz mumkin.\n\n"
-
-            "🌐 <b>Tilni o'zgartirish</b>\n"
-            "🌐 tugmasini bosib 6 ta tildan birini tanlang."
-        ),
-
-        "favorites_empty":
-            "⭐ Sizda saqlangan tarjimalar yo'q.",
-
-        "favorites_title":
-            "⭐ <b>Sevimlilar</b>\n\n",
-
-        "add_favorite":
-            "⭐ Sevimlilarga qo'shish",
-
-        "favorite_added":
-            "⭐ Tarjima sevimlilarga qo'shildi!",
-
-        "favorite_exists":
-            "⭐ Bu tarjima allaqachon saqlangan!",
-
-        "video_processing":
-            "🎬 Videodagi yozuvlar aniqlanmoqda...",
-
-        "video_no_text":
-            "❌ Videoda yozuv topilmadi.",
-
-        "video_error":
-            "❌ Videoni qayta ishlashda xatolik yuz berdi.",
-
-        "translation_error":
-            "❌ Tarjima qilishda xatolik yuz berdi.",
-
-        "empty_text":
-            "❌ Tarjima qilish uchun matn yuboring."
+        "name": "🇺🇿 O‘zbek",
+        "google": "uz",
+        "ocr": "eng+rus"
     },
-
-
-    # =====================================================
-    # ENGLISH
-    # =====================================================
 
     "en": {
-
-        "about": "🤖 About bot",
-        "help": "❓ Help",
-        "change_lang": "🌐 Change language",
-        "favorites": "⭐ Favorites",
-
-        "choose_lang":
-            "🌐 Choose your language:",
-
-        "language_changed":
-            "✅ Language changed successfully!",
-
-        "start": (
-            "👋 Hello!\n\n"
-            "🤖 Welcome to <b>Fast Translator</b>!\n\n"
-            "📝 Send a word or text.\n"
-            "🎬 Send a video to translate visible text."
-        ),
-
-        "about_text": (
-            "🤖 <b>FAST TRANSLATOR</b>\n\n"
-            "📝 Word and text translation\n"
-            "📚 Multiple word meanings\n"
-            "🎬 Translate visible text in videos\n"
-            "🌐 6 languages\n"
-            "⭐ Favorites\n"
-            "❓ Help\n"
-            "📱 Easy menu\n\n"
-            "🔇 Video audio is not translated.\n\n"
-            "👨‍💻 <b>Bot creator:</b> @Foziljon20l0"
-        ),
-
-        "help_text": (
-            "❓ <b>HELP</b>\n\n"
-
-            "📝 <b>Text translation</b>\n"
-            "Send any word or sentence. "
-            "The bot translates it into the selected language.\n\n"
-
-            "📚 <b>Multiple meanings</b>\n"
-            "For words such as <b>book</b>, "
-            "the bot also shows the main available meanings.\n\n"
-
-            "🎬 <b>Video translation</b>\n"
-            "Send a video. The bot detects visible text "
-            "and translates it into the selected language.\n\n"
-
-            "🔇 <b>Important:</b> Video audio is not translated. "
-            "Only visible text is translated.\n\n"
-
-            "⭐ <b>Favorites</b>\n"
-            "Press ⭐ under a translation to save it.\n\n"
-
-            "🌐 <b>Change language</b>\n"
-            "Press 🌐 and choose one of the 6 languages."
-        ),
-
-        "favorites_empty":
-            "⭐ You have no saved translations.",
-
-        "favorites_title":
-            "⭐ <b>Favorites</b>\n\n",
-
-        "add_favorite":
-            "⭐ Add to favorites",
-
-        "favorite_added":
-            "⭐ Translation added to favorites!",
-
-        "favorite_exists":
-            "⭐ This translation is already saved!",
-
-        "video_processing":
-            "🎬 Detecting text in the video...",
-
-        "video_no_text":
-            "❌ No text was found in the video.",
-
-        "video_error":
-            "❌ Error while processing the video.",
-
-        "translation_error":
-            "❌ Translation error.",
-
-        "empty_text":
-            "❌ Send some text to translate."
+        "name": "🇬🇧 English",
+        "google": "en",
+        "ocr": "eng"
     },
-
-
-    # =====================================================
-    # RUSSIAN
-    # =====================================================
 
     "ru": {
-
-        "about": "🤖 О боте",
-        "help": "❓ Помощь",
-        "change_lang": "🌐 Изменить язык",
-        "favorites": "⭐ Избранное",
-
-        "choose_lang":
-            "🌐 Выберите язык:",
-
-        "language_changed":
-            "✅ Язык успешно изменён!",
-
-        "start": (
-            "👋 Здравствуйте!\n\n"
-            "🤖 Добро пожаловать в <b>Fast Translator</b>!\n\n"
-            "📝 Отправьте слово или текст.\n"
-            "🎬 Отправьте видео для перевода текста."
-        ),
-
-        "about_text": (
-            "🤖 <b>FAST TRANSLATOR</b>\n\n"
-            "📝 Перевод слов и текста\n"
-            "📚 Несколько значений слов\n"
-            "🎬 Перевод текста в видео\n"
-            "🌐 6 языков\n"
-            "⭐ Избранное\n"
-            "❓ Помощь\n"
-            "📱 Удобное меню\n\n"
-            "🔇 Голос видео не переводится.\n\n"
-            "👨‍💻 <b>Создатель бота:</b> @Foziljon20l0"
-        ),
-
-        "help_text": (
-            "❓ <b>ПОМОЩЬ</b>\n\n"
-
-            "📝 <b>Перевод текста</b>\n"
-            "Отправьте слово или предложение. "
-            "Бот переведёт его на выбранный язык.\n\n"
-
-            "📚 <b>Несколько значений</b>\n"
-            "Для многозначных слов, например <b>book</b>, "
-            "бот показывает основные значения.\n\n"
-
-            "🎬 <b>Перевод видео</b>\n"
-            "Отправьте видео. Бот распознает видимый текст "
-            "и переведёт его.\n\n"
-
-            "🔇 <b>Важно:</b> Голос видео не переводится. "
-            "Переводится только видимый текст.\n\n"
-
-            "⭐ <b>Избранное</b>\n"
-            "Нажмите ⭐ под переводом, чтобы сохранить его.\n\n"
-
-            "🌐 <b>Изменение языка</b>\n"
-            "Нажмите 🌐 и выберите один из 6 языков."
-        ),
-
-        "favorites_empty":
-            "⭐ У вас нет сохранённых переводов.",
-
-        "favorites_title":
-            "⭐ <b>Избранное</b>\n\n",
-
-        "add_favorite":
-            "⭐ Добавить в избранное",
-
-        "favorite_added":
-            "⭐ Перевод добавлен в избранное!",
-
-        "favorite_exists":
-            "⭐ Этот перевод уже сохранён!",
-
-        "video_processing":
-            "🎬 Определяем текст в видео...",
-
-        "video_no_text":
-            "❌ Текст в видео не найден.",
-
-        "video_error":
-            "❌ Ошибка обработки видео.",
-
-        "translation_error":
-            "❌ Ошибка перевода.",
-
-        "empty_text":
-            "❌ Отправьте текст."
+        "name": "🇷🇺 Русский",
+        "google": "ru",
+        "ocr": "rus+eng"
     },
-
-
-    # =====================================================
-    # ARABIC
-    # =====================================================
 
     "ar": {
-
-        "about": "🤖 حول البوت",
-        "help": "❓ المساعدة",
-        "change_lang": "🌐 تغيير اللغة",
-        "favorites": "⭐ المفضلة",
-
-        "choose_lang":
-            "🌐 اختر اللغة:",
-
-        "language_changed":
-            "✅ تم تغيير اللغة بنجاح!",
-
-        "start": (
-            "👋 مرحباً!\n\n"
-            "🤖 أهلاً بك في <b>Fast Translator</b>!\n\n"
-            "📝 أرسل كلمة أو نصاً.\n"
-            "🎬 أرسل فيديو لترجمة النص الظاهر."
-        ),
-
-        "about_text": (
-            "🤖 <b>FAST TRANSLATOR</b>\n\n"
-            "📝 ترجمة الكلمات والنصوص\n"
-            "📚 معاني الكلمات المتعددة\n"
-            "🎬 ترجمة النص الظاهر في الفيديو\n"
-            "🌐 6 لغات\n"
-            "⭐ المفضلة\n"
-            "❓ المساعدة\n"
-            "📱 قائمة سهلة\n\n"
-            "🔇 لا تتم ترجمة صوت الفيديو.\n\n"
-            "👨‍💻 <b>منشئ البوت:</b> @Foziljon20l0"
-        ),
-
-        "help_text": (
-            "❓ <b>المساعدة</b>\n\n"
-
-            "📝 <b>ترجمة النص</b>\n"
-            "أرسل أي كلمة أو جملة وسيتم ترجمتها "
-            "إلى اللغة المختارة.\n\n"
-
-            "📚 <b>معاني متعددة</b>\n"
-            "للكلمات متعددة المعاني مثل <b>book</b>، "
-            "يعرض البوت المعاني الرئيسية.\n\n"
-
-            "🎬 <b>ترجمة الفيديو</b>\n"
-            "أرسل فيديو وسيكتشف البوت النص الظاهر "
-            "ويترجمه.\n\n"
-
-            "🔇 <b>مهم:</b> لا تتم ترجمة صوت الفيديو. "
-            "تتم ترجمة النص الظاهر فقط.\n\n"
-
-            "⭐ <b>المفضلة</b>\n"
-            "اضغط ⭐ أسفل الترجمة لحفظها.\n\n"
-
-            "🌐 <b>تغيير اللغة</b>\n"
-            "اضغط 🌐 واختر إحدى اللغات الست."
-        ),
-
-        "favorites_empty":
-            "⭐ لا توجد ترجمات محفوظة.",
-
-        "favorites_title":
-            "⭐ <b>المفضلة</b>\n\n",
-
-        "add_favorite":
-            "⭐ إضافة إلى المفضلة",
-
-        "favorite_added":
-            "⭐ تمت إضافة الترجمة إلى المفضلة!",
-
-        "favorite_exists":
-            "⭐ هذه الترجمة محفوظة بالفعل!",
-
-        "video_processing":
-            "🎬 يتم اكتشاف النص في الفيديو...",
-
-        "video_no_text":
-            "❌ لم يتم العثور على نص في الفيديو.",
-
-        "video_error":
-            "❌ حدث خطأ أثناء معالجة الفيديو.",
-
-        "translation_error":
-            "❌ حدث خطأ في الترجمة.",
-
-        "empty_text":
-            "❌ أرسل نصاً للترجمة."
+        "name": "🇸🇦 العربية",
+        "google": "ar",
+        "ocr": "ara+eng"
     },
-
-
-    # =====================================================
-    # KOREAN
-    # =====================================================
 
     "ko": {
-
-        "about": "🤖 봇 정보",
-        "help": "❓ 도움말",
-        "change_lang": "🌐 언어 변경",
-        "favorites": "⭐ 즐겨찾기",
-
-        "choose_lang":
-            "🌐 언어를 선택하세요:",
-
-        "language_changed":
-            "✅ 언어가 성공적으로 변경되었습니다!",
-
-        "start": (
-            "👋 안녕하세요!\n\n"
-            "🤖 <b>Fast Translator</b>에 오신 것을 환영합니다!\n\n"
-            "📝 단어나 문장을 보내세요.\n"
-            "🎬 동영상을 보내면 보이는 텍스트를 번역합니다."
-        ),
-
-        "about_text": (
-            "🤖 <b>FAST TRANSLATOR</b>\n\n"
-            "📝 단어 및 텍스트 번역\n"
-            "📚 여러 단어 의미\n"
-            "🎬 동영상의 보이는 텍스트 번역\n"
-            "🌐 6개 언어\n"
-            "⭐ 즐겨찾기\n"
-            "❓ 도움말\n"
-            "📱 편리한 메뉴\n\n"
-            "🔇 동영상 음성은 번역되지 않습니다.\n\n"
-            "👨‍💻 <b>봇 제작자:</b> @Foziljon20l0"
-        ),
-
-        "help_text": (
-            "❓ <b>도움말</b>\n\n"
-
-            "📝 <b>텍스트 번역</b>\n"
-            "단어나 문장을 보내면 선택한 언어로 번역합니다.\n\n"
-
-            "📚 <b>여러 의미</b>\n"
-            "<b>book</b>과 같이 여러 의미가 있는 단어는 "
-            "주요 의미도 보여줍니다.\n\n"
-
-            "🎬 <b>동영상 번역</b>\n"
-            "동영상을 보내면 보이는 텍스트를 찾아 번역합니다.\n\n"
-
-            "🔇 <b>중요:</b> 동영상의 음성은 번역하지 않습니다. "
-            "보이는 텍스트만 번역합니다.\n\n"
-
-            "⭐ <b>즐겨찾기</b>\n"
-            "번역 아래의 ⭐ 버튼을 눌러 저장할 수 있습니다.\n\n"
-
-            "🌐 <b>언어 변경</b>\n"
-            "🌐 버튼을 누르고 6개 언어 중 하나를 선택하세요."
-        ),
-
-        "favorites_empty":
-            "⭐ 저장된 번역이 없습니다.",
-
-        "favorites_title":
-            "⭐ <b>즐겨찾기</b>\n\n",
-
-        "add_favorite":
-            "⭐ 즐겨찾기에 추가",
-
-        "favorite_added":
-            "⭐ 번역이 즐겨찾기에 추가되었습니다!",
-
-        "favorite_exists":
-            "⭐ 이미 저장된 번역입니다!",
-
-        "video_processing":
-            "🎬 동영상의 텍스트를 찾는 중입니다...",
-
-        "video_no_text":
-            "❌ 동영상에서 텍스트를 찾지 못했습니다.",
-
-        "video_error":
-            "❌ 동영상 처리 중 오류가 발생했습니다.",
-
-        "translation_error":
-            "❌ 번역 중 오류가 발생했습니다.",
-
-        "empty_text":
-            "❌ 번역할 텍스트를 보내주세요."
+        "name": "🇰🇷 한국어",
+        "google": "ko",
+        "ocr": "kor+eng"
     },
 
-
-    # =====================================================
-    # CHINESE
-    # =====================================================
-
-    "zh-CN": {
-
-        "about": "🤖 关于机器人",
-        "help": "❓ 帮助",
-        "change_lang": "🌐 更改语言",
-        "favorites": "⭐ 收藏",
-
-        "choose_lang":
-            "🌐 请选择语言:",
-
-        "language_changed":
-            "✅ 语言已成功更改!",
-
-        "start": (
-            "👋 你好!\n\n"
-            "🤖 欢迎使用 <b>Fast Translator</b>!\n\n"
-            "📝 发送单词或文本。\n"
-            "🎬 发送视频即可翻译可见文字。"
-        ),
-
-        "about_text": (
-            "🤖 <b>FAST TRANSLATOR</b>\n\n"
-            "📝 单词和文本翻译\n"
-            "📚 单词的多个含义\n"
-            "🎬 翻译视频中的可见文字\n"
-            "🌐 6种语言\n"
-            "⭐ 收藏\n"
-            "❓ 帮助\n"
-            "📱 方便的菜单\n\n"
-            "🔇 不翻译视频声音。\n\n"
-            "👨‍💻 <b>机器人创建者:</b> @Foziljon20l0"
-        ),
-
-        "help_text": (
-            "❓ <b>帮助</b>\n\n"
-
-            "📝 <b>文本翻译</b>\n"
-            "发送单词或句子，机器人会翻译成所选语言。\n\n"
-
-            "📚 <b>多个含义</b>\n"
-            "对于像 <b>book</b> 这样的多义词，"
-            "机器人也会显示主要含义。\n\n"
-
-            "🎬 <b>视频翻译</b>\n"
-            "发送视频，机器人会识别可见文字并进行翻译。\n\n"
-
-            "🔇 <b>重要:</b> 不翻译视频声音，"
-            "只翻译可见文字。\n\n"
-
-            "⭐ <b>收藏</b>\n"
-            "点击翻译下面的 ⭐ 按钮即可保存。\n\n"
-
-            "🌐 <b>更改语言</b>\n"
-            "点击 🌐 并选择六种语言之一。"
-        ),
-
-        "favorites_empty":
-            "⭐ 没有保存的翻译。",
-
-        "favorites_title":
-            "⭐ <b>收藏</b>\n\n",
-
-        "add_favorite":
-            "⭐ 添加到收藏",
-
-        "favorite_added":
-            "⭐ 翻译已添加到收藏!",
-
-        "favorite_exists":
-            "⭐ 此翻译已经保存!",
-
-        "video_processing":
-            "🎬 正在识别视频中的文字...",
-
-        "video_no_text":
-            "❌ 视频中没有找到文字。",
-
-        "video_error":
-            "❌ 处理视频时发生错误。",
-
-        "translation_error":
-            "❌ 翻译时发生错误。",
-
-        "empty_text":
-            "❌ 请发送要翻译的文本。"
+    "zh": {
+        "name": "🇨🇳 中文",
+        "google": "zh-CN",
+        "ocr": "chi_sim+eng"
     }
 }
 
 
-# =========================================================
-# YORDAMCHI FUNKSIYALAR
-# =========================================================
+# ============================================================
+# FOYDALANUVCHI TILLARI
+# ============================================================
 
-def get_lang(user_id):
-
-    if user_id not in user_languages:
-        user_languages[user_id] = "uz"
-
-    return user_languages[user_id]
+user_languages = {}
 
 
-def txt(user_id, key):
+def get_user_language(user_id: int) -> str:
+    return user_languages.get(user_id, "uz")
 
-    lang = get_lang(user_id)
 
-    return TEXTS.get(
-        lang,
-        TEXTS["uz"]
-    ).get(
-        key,
-        TEXTS["uz"].get(key, "")
+def set_user_language(user_id: int, lang: str):
+    if lang in LANGUAGES:
+        user_languages[user_id] = lang
+
+
+# ============================================================
+# MATNLAR
+# ============================================================
+
+TEXTS = {
+
+    "uz": {
+        "welcome":
+            "👋 <b>Super Tarjimon Bot</b>ga xush kelibsiz!\n\n"
+            "📝 Istalgan matnni yuboring — men uni tarjima qilaman.\n"
+            "🖼️ Rasm yuborsangiz, rasmdagi matnni o‘qib tarjima qilib, "
+            "tarjima qilingan yangi rasmni yuboraman.\n\n"
+            "🔤 Agar bitta so‘z yuborsangiz, imkon qadar uning "
+            "bir nechta asosiy ma’nolarini ko‘rsataman.\n\n"
+            "🌍 Tilni tanlash uchun <b>🌐 Tilni o‘zgartirish</b> tugmasini bosing.",
+
+        "help":
+            "📚 <b>Yordam</b>\n\n"
+            "📝 Matn yuboring — tarjima qilaman.\n"
+            "🖼️ Rasm yuboring — rasmdagi yozuvni tarjima qilib, "
+            "rasm holida qaytaraman.\n"
+            "🔤 Bitta so‘z yuboring — asosiy ma’nolarini ko‘rsatishga harakat qilaman.\n\n"
+            "🌐 <b>Tilni o‘zgartirish</b> — bot interfeysi va tarjima tilini o‘zgartiradi.\n"
+            "ℹ️ <b>Haqida</b> — bot haqida ma’lumot.",
+
+        "language":
+            "🌐 <b>Tarjima qilinadigan tilni tanlang:</b>",
+
+        "selected":
+            "✅ Til o‘zgartirildi: <b>{}</b>",
+
+        "about":
+            "ℹ️ <b>Super Tarjimon Bot haqida</b>\n\n"
+            "🤖 Bot vazifasi:\n"
+            "• Matnlarni tarjima qilish\n"
+            "• Rasmdagi matnni aniqlash va tarjima qilish\n"
+            "• Bitta so‘zning asosiy ma’nolarini ko‘rsatish\n\n"
+            "🌍 Qo‘llab-quvvatlanadigan tillar:\n"
+            "🇺🇿 O‘zbek\n"
+            "🇬🇧 English\n"
+            "🇷🇺 Русский\n"
+            "🇸🇦 العربية\n"
+            "🇰🇷 한국어\n"
+            "🇨🇳 中文\n\n"
+            "👨‍💻 <b>Bot yaratuvchisi:</b> @Foziljon20l0",
+
+        "error":
+            "❌ Tarjima vaqtida xatolik yuz berdi. Keyinroq yana urinib ko‘ring.",
+
+        "empty":
+            "⚠️ Matn topilmadi.",
+
+        "processing":
+            "⏳ Tarjima qilinmoqda...",
+
+        "image_processing":
+            "🖼️ Rasm tahlil qilinmoqda va tarjima qilinmoqda...",
+
+        "ocr_error":
+            "❌ Rasm ichidagi matnni aniqlab bo‘lmadi.",
+
+        "no_text":
+            "⚠️ Rasm ichida tarjima qilinadigan matn topilmadi.",
+
+        "word_meanings":
+            "🔤 <b>So‘z:</b> {word}\n\n"
+            "📖 <b>Asosiy ma’nolari:</b>\n{meanings}\n\n"
+            "🌐 <b>Tarjima:</b> {translation}",
+
+        "buttons": {
+            "language": "🌐 Tilni o‘zgartirish",
+            "about": "ℹ️ Haqida",
+            "help": "❓ Yordam"
+        }
+    },
+
+
+    "en": {
+        "welcome":
+            "👋 Welcome to <b>Super Translator Bot</b>!\n\n"
+            "📝 Send any text and I will translate it.\n"
+            "🖼️ Send an image and I will read the text, translate it, "
+            "and return a translated image.\n\n"
+            "🔤 If you send one word, I will try to show several main meanings.\n\n"
+            "🌍 Use <b>🌐 Change Language</b> to select a language.",
+
+        "help":
+            "📚 <b>Help</b>\n\n"
+            "📝 Send text — I will translate it.\n"
+            "🖼️ Send an image — I will translate the text inside it.\n"
+            "🔤 Send one word — I will try to show its main meanings.\n\n"
+            "🌐 <b>Change Language</b> — changes the translation language.\n"
+            "ℹ️ <b>About</b> — information about the bot.",
+
+        "language":
+            "🌐 <b>Select the translation language:</b>",
+
+        "selected":
+            "✅ Language changed to: <b>{}</b>",
+
+        "about":
+            "ℹ️ <b>About Super Translator Bot</b>\n\n"
+            "🤖 Bot functions:\n"
+            "• Translate text\n"
+            "• Detect and translate text from images\n"
+            "• Show main meanings of a single word\n\n"
+            "🌍 Supported languages:\n"
+            "🇺🇿 Uzbek\n"
+            "🇬🇧 English\n"
+            "🇷🇺 Russian\n"
+            "🇸🇦 Arabic\n"
+            "🇰🇷 Korean\n"
+            "🇨🇳 Chinese\n\n"
+            "👨‍💻 <b>Bot creator:</b> @Foziljon20l0",
+
+        "error":
+            "❌ An error occurred during translation. Please try again later.",
+
+        "empty":
+            "⚠️ No text was found.",
+
+        "processing":
+            "⏳ Translating...",
+
+        "image_processing":
+            "🖼️ Processing and translating the image...",
+
+        "ocr_error":
+            "❌ Could not detect text in the image.",
+
+        "no_text":
+            "⚠️ No translatable text was found in the image.",
+
+        "word_meanings":
+            "🔤 <b>Word:</b> {word}\n\n"
+            "📖 <b>Main meanings:</b>\n{meanings}\n\n"
+            "🌐 <b>Translation:</b> {translation}",
+
+        "buttons": {
+            "language": "🌐 Change Language",
+            "about": "ℹ️ About",
+            "help": "❓ Help"
+        }
+    },
+
+
+    "ru": {
+        "welcome":
+            "👋 Добро пожаловать в <b>Super Translator Bot</b>!\n\n"
+            "📝 Отправьте текст — я переведу его.\n"
+            "🖼️ Отправьте изображение — я распознаю текст, переведу его "
+            "и отправлю новое изображение.\n\n"
+            "🔤 Если отправить одно слово, я постараюсь показать несколько "
+            "основных значений.\n\n"
+            "🌍 Для выбора языка нажмите <b>🌐 Изменить язык</b>.",
+
+        "help":
+            "📚 <b>Помощь</b>\n\n"
+            "📝 Отправьте текст — я переведу его.\n"
+            "🖼️ Отправьте изображение — я переведу текст внутри него.\n"
+            "🔤 Отправьте одно слово — покажу основные значения.\n\n"
+            "🌐 <b>Изменить язык</b> — изменить язык перевода.\n"
+            "ℹ️ <b>О боте</b> — информация о боте.",
+
+        "language":
+            "🌐 <b>Выберите язык перевода:</b>",
+
+        "selected":
+            "✅ Язык изменён: <b>{}</b>",
+
+        "about":
+            "ℹ️ <b>О Super Translator Bot</b>\n\n"
+            "🤖 Возможности бота:\n"
+            "• Перевод текста\n"
+            "• Распознавание и перевод текста на изображениях\n"
+            "• Основные значения отдельных слов\n\n"
+            "🌍 Поддерживаемые языки:\n"
+            "🇺🇿 Узбекский\n"
+            "🇬🇧 Английский\n"
+            "🇷🇺 Русский\n"
+            "🇸🇦 Арабский\n"
+            "🇰🇷 Корейский\n"
+            "🇨🇳 Китайский\n\n"
+            "👨‍💻 <b>Создатель бота:</b> @Foziljon20l0",
+
+        "error":
+            "❌ Во время перевода произошла ошибка. Попробуйте позже.",
+
+        "empty":
+            "⚠️ Текст не найден.",
+
+        "processing":
+            "⏳ Перевод выполняется...",
+
+        "image_processing":
+            "🖼️ Изображение анализируется и переводится...",
+
+        "ocr_error":
+            "❌ Не удалось распознать текст на изображении.",
+
+        "no_text":
+            "⚠️ На изображении не найден текст для перевода.",
+
+        "word_meanings":
+            "🔤 <b>Слово:</b> {word}\n\n"
+            "📖 <b>Основные значения:</b>\n{meanings}\n\n"
+            "🌐 <b>Перевод:</b> {translation}",
+
+        "buttons": {
+            "language": "🌐 Изменить язык",
+            "about": "ℹ️ О боте",
+            "help": "❓ Помощь"
+        }
+    },
+
+
+    "ar": {
+        "welcome":
+            "👋 مرحباً بك في <b>Super Translator Bot</b>!\n\n"
+            "📝 أرسل أي نص وسأقوم بترجمته.\n"
+            "🖼️ أرسل صورة وسأتعرف على النص الموجود فيها وأترجمه "
+            "وأرسل لك صورة مترجمة.\n\n"
+            "🔤 إذا أرسلت كلمة واحدة، سأحاول عرض عدة معانٍ رئيسية لها.\n\n"
+            "🌍 لاختيار اللغة اضغط على <b>🌐 تغيير اللغة</b>.",
+
+        "help":
+            "📚 <b>المساعدة</b>\n\n"
+            "📝 أرسل نصاً — سأقوم بترجمته.\n"
+            "🖼️ أرسل صورة — سأترجم النص الموجود فيها.\n"
+            "🔤 أرسل كلمة واحدة — سأحاول عرض معانيها الرئيسية.\n\n"
+            "🌐 <b>تغيير اللغة</b> — تغيير لغة الترجمة.\n"
+            "ℹ️ <b>حول البوت</b> — معلومات عن البوت.",
+
+        "language":
+            "🌐 <b>اختر لغة الترجمة:</b>",
+
+        "selected":
+            "✅ تم تغيير اللغة إلى: <b>{}</b>",
+
+        "about":
+            "ℹ️ <b>حول Super Translator Bot</b>\n\n"
+            "🤖 وظائف البوت:\n"
+            "• ترجمة النصوص\n"
+            "• التعرف على النصوص في الصور وترجمتها\n"
+            "• عرض المعاني الرئيسية للكلمة الواحدة\n\n"
+            "🌍 اللغات المدعومة:\n"
+            "🇺🇿 الأوزبكية\n"
+            "🇬🇧 الإنجليزية\n"
+            "🇷🇺 الروسية\n"
+            "🇸🇦 العربية\n"
+            "🇰🇷 الكورية\n"
+            "🇨🇳 الصينية\n\n"
+            "👨‍💻 <b>منشئ البوت:</b> @Foziljon20l0",
+
+        "error":
+            "❌ حدث خطأ أثناء الترجمة. حاول مرة أخرى لاحقاً.",
+
+        "empty":
+            "⚠️ لم يتم العثور على نص.",
+
+        "processing":
+            "⏳ جارٍ الترجمة...",
+
+        "image_processing":
+            "🖼️ جارٍ تحليل الصورة وترجمتها...",
+
+        "ocr_error":
+            "❌ تعذر التعرف على النص في الصورة.",
+
+        "no_text":
+            "⚠️ لم يتم العثور على نص قابل للترجمة في الصورة.",
+
+        "word_meanings":
+            "🔤 <b>الكلمة:</b> {word}\n\n"
+            "📖 <b>المعاني الرئيسية:</b>\n{meanings}\n\n"
+            "🌐 <b>الترجمة:</b> {translation}",
+
+        "buttons": {
+            "language": "🌐 تغيير اللغة",
+            "about": "ℹ️ حول البوت",
+            "help": "❓ المساعدة"
+        }
+    },
+
+
+    "ko": {
+        "welcome":
+            "👋 <b>Super Translator Bot</b>에 오신 것을 환영합니다!\n\n"
+            "📝 텍스트를 보내주시면 번역해 드립니다.\n"
+            "🖼️ 이미지를 보내주시면 이미지의 글자를 인식하고 번역한 후 "
+            "번역된 이미지로 보내드립니다.\n\n"
+            "🔤 한 단어를 보내면 가능한 경우 여러 주요 의미를 보여드립니다.\n\n"
+            "🌍 언어를 선택하려면 <b>🌐 언어 변경</b>을 눌러주세요.",
+
+        "help":
+            "📚 <b>도움말</b>\n\n"
+            "📝 텍스트를 보내면 번역합니다.\n"
+            "🖼️ 이미지를 보내면 이미지 속 글자를 번역합니다.\n"
+            "🔤 한 단어를 보내면 주요 의미를 보여드리려고 합니다.\n\n"
+            "🌐 <b>언어 변경</b> — 번역 언어를 변경합니다.\n"
+            "ℹ️ <b>봇 정보</b> — 봇에 대한 정보입니다.",
+
+        "language":
+            "🌐 <b>번역 언어를 선택하세요:</b>",
+
+        "selected":
+            "✅ 언어가 변경되었습니다: <b>{}</b>",
+
+        "about":
+            "ℹ️ <b>Super Translator Bot 정보</b>\n\n"
+            "🤖 봇 기능:\n"
+            "• 텍스트 번역\n"
+            "• 이미지 속 텍스트 인식 및 번역\n"
+            "• 한 단어의 주요 의미 표시\n\n"
+            "🌍 지원 언어:\n"
+            "🇺🇿 우즈베크어\n"
+            "🇬🇧 영어\n"
+            "🇷🇺 러시아어\n"
+            "🇸🇦 아랍어\n"
+            "🇰🇷 한국어\n"
+            "🇨🇳 중국어\n\n"
+            "👨‍💻 <b>봇 제작자:</b> @Foziljon20l0",
+
+        "error":
+            "❌ 번역 중 오류가 발생했습니다. 나중에 다시 시도해주세요.",
+
+        "empty":
+            "⚠️ 텍스트를 찾을 수 없습니다.",
+
+        "processing":
+            "⏳ 번역 중...",
+
+        "image_processing":
+            "🖼️ 이미지를 분석하고 번역하는 중입니다...",
+
+        "ocr_error":
+            "❌ 이미지에서 텍스트를 인식하지 못했습니다.",
+
+        "no_text":
+            "⚠️ 이미지에서 번역할 텍스트를 찾지 못했습니다.",
+
+        "word_meanings":
+            "🔤 <b>단어:</b> {word}\n\n"
+            "📖 <b>주요 의미:</b>\n{meanings}\n\n"
+            "🌐 <b>번역:</b> {translation}",
+
+        "buttons": {
+            "language": "🌐 언어 변경",
+            "about": "ℹ️ 봇 정보",
+            "help": "❓ 도움말"
+        }
+    },
+
+
+    "zh": {
+        "welcome":
+            "👋 欢迎使用 <b>Super Translator Bot</b>！\n\n"
+            "📝 发送文本，我会为你翻译。\n"
+            "🖼️ 发送图片，我会识别图片中的文字并翻译，然后发送翻译后的图片。\n\n"
+            "🔤 如果发送一个单词，我会尽可能显示它的多个主要含义。\n\n"
+            "🌍 点击 <b>🌐 更改语言</b> 选择语言。",
+
+        "help":
+            "📚 <b>帮助</b>\n\n"
+            "📝 发送文本 — 我会翻译它。\n"
+            "🖼️ 发送图片 — 我会翻译图片中的文字。\n"
+            "🔤 发送一个单词 — 我会尝试显示主要含义。\n\n"
+            "🌐 <b>更改语言</b> — 更改翻译语言。\n"
+            "ℹ️ <b>关于机器人</b> — 查看机器人信息。",
+
+        "language":
+            "🌐 <b>请选择翻译语言：</b>",
+
+        "selected":
+            "✅ 语言已更改为：<b>{}</b>",
+
+        "about":
+            "ℹ️ <b>关于 Super Translator Bot</b>\n\n"
+            "🤖 机器人功能：\n"
+            "• 翻译文本\n"
+            "• 识别并翻译图片中的文字\n"
+            "• 显示单词的主要含义\n\n"
+            "🌍 支持的语言：\n"
+            "🇺🇿 乌兹别克语\n"
+            "🇬🇧 英语\n"
+            "🇷🇺 俄语\n"
+            "🇸🇦 阿拉伯语\n"
+            "🇰🇷 韩语\n"
+            "🇨🇳 中文\n\n"
+            "👨‍💻 <b>机器人创建者：</b> @Foziljon20l0",
+
+        "error":
+            "❌ 翻译过程中出现错误，请稍后再试。",
+
+        "empty":
+            "⚠️ 没有找到文本。",
+
+        "processing":
+            "⏳ 正在翻译...",
+
+        "image_processing":
+            "🖼️ 正在分析并翻译图片...",
+
+        "ocr_error":
+            "❌ 无法识别图片中的文字。",
+
+        "no_text":
+            "⚠️ 图片中没有找到可翻译的文字。",
+
+        "word_meanings":
+            "🔤 <b>单词：</b> {word}\n\n"
+            "📖 <b>主要含义：</b>\n{meanings}\n\n"
+            "🌐 <b>翻译：</b> {translation}",
+
+        "buttons": {
+            "language": "🌐 更改语言",
+            "about": "ℹ️ 关于机器人",
+            "help": "❓ 帮助"
+        }
+    }
+}
+
+
+# ============================================================
+# MATN TARJIMA QILISH
+# ============================================================
+
+def translate_text(text: str, target_lang: str) -> str:
+
+    if not text or not text.strip():
+        return ""
+
+    try:
+        result = GoogleTranslator(
+            source="auto",
+            target=target_lang
+        ).translate(text)
+
+        return result if result else ""
+
+    except Exception as e:
+        logger.error(
+            "Translation error: %s",
+            e
+        )
+        return ""
+
+
+# ============================================================
+# FOYDALANUVCHI TILI
+# ============================================================
+
+def get_user_language(user_id: int) -> str:
+    return user_languages.get(
+        user_id,
+        "uz"
     )
 
 
-# =========================================================
-# ASOSIY MENYU
-# =========================================================
+def set_user_language(
+    user_id: int,
+    lang: str
+):
 
-def main_keyboard(user_id):
+    if lang in LANGUAGES:
+        user_languages[user_id] = lang
+
+
+# ============================================================
+# MATN OLISH
+# ============================================================
+
+def get_text(
+    user_id: int,
+    key: str
+):
+
+    lang = get_user_language(
+        user_id
+    )
+
+    return TEXTS[lang].get(
+        key,
+        ""
+    )
+
+
+# ============================================================
+# ASOSIY KLAVIATURA
+# ============================================================
+
+def main_keyboard(user_id: int):
+
+    lang = get_user_language(
+        user_id
+    )
 
     keyboard = types.ReplyKeyboardMarkup(
-        resize_keyboard=True,
-        row_width=2
+        resize_keyboard=True
     )
 
-    keyboard.add(
+    keyboard.row(
         types.KeyboardButton(
-            txt(user_id, "about")
+            TEXTS[lang]["buttons"]["language"]
         ),
         types.KeyboardButton(
-            txt(user_id, "help")
+            TEXTS[lang]["buttons"]["about"]
         )
     )
 
-    keyboard.add(
+    keyboard.row(
         types.KeyboardButton(
-            txt(user_id, "change_lang")
-        ),
-        types.KeyboardButton(
-            txt(user_id, "favorites")
+            TEXTS[lang]["buttons"]["help"]
         )
     )
 
     return keyboard
 
 
-# =========================================================
-# TIL TANLASH
-# =========================================================
+# ============================================================
+# TIL TANLASH KLAVIATURASI
+# ============================================================
 
 def language_keyboard():
 
@@ -687,160 +644,706 @@ def language_keyboard():
 
     buttons = []
 
-    for code, name in LANGUAGES.items():
+    for code, data in LANGUAGES.items():
 
         buttons.append(
             types.InlineKeyboardButton(
-                name,
+                data["name"],
                 callback_data=f"lang:{code}"
             )
         )
 
-    keyboard.add(*buttons)
+    for i in range(
+        0,
+        len(buttons),
+        2
+    ):
+
+        keyboard.row(
+            *buttons[i:i + 2]
+        )
 
     return keyboard
 
 
-# =========================================================
-# TARJIMA
-# =========================================================
+# ============================================================
+# SO'ZNING BIRTA SO'Z EKANINI ANIQLASH
+# ============================================================
 
-def translate_text(text, target):
+def is_single_word(text: str) -> bool:
 
-    if not text or not text.strip():
-        return None
+    text = text.strip()
 
-    try:
-
-        translator = GoogleTranslator(
-            source="auto",
-            target=target
-        )
-
-        return translator.translate(text)
-
-    except Exception as e:
-
-        print("Translation error:", e)
-
-        return None
-
-
-# =========================================================
-# KO'P MA'NOLI SO'ZLAR
-# =========================================================
-
-def get_word_meanings(word, target):
-
-    word = word.strip()
-
-    if not word or len(word.split()) != 1:
-        return []
-
-    try:
-
-        api_url = (
-            "https://api.dictionaryapi.dev/api/v2/"
-            "entries/en/"
-            + word
-        )
-
-        response = requests.get(
-            api_url,
-            timeout=10
-        )
-
-        if response.status_code != 200:
-            return []
-
-        data = response.json()
-
-        meanings = []
-
-        for entry in data:
-
-            for meaning in entry.get(
-                "meanings",
-                []
-            ):
-
-                part = meaning.get(
-                    "partOfSpeech",
-                    ""
-                )
-
-                for definition in meaning.get(
-                    "definitions",
-                    []
-                ):
-
-                    definition_text = definition.get(
-                        "definition",
-                        ""
-                    )
-
-                    if not definition_text:
-                        continue
-
-                    translated = translate_text(
-                        definition_text,
-                        target
-                    )
-
-                    if not translated:
-                        continue
-
-                    item = (
-                        f"• <b>{part}</b> — "
-                        f"{translated}"
-                    )
-
-                    if item not in meanings:
-                        meanings.append(item)
-
-        return meanings[:8]
-
-    except Exception as e:
-
-        print("Meaning error:", e)
-
-        return []
-
-
-# =========================================================
-# FAVORITES
-# =========================================================
-
-def favorite_keyboard():
-
-    keyboard = types.InlineKeyboardMarkup()
-
-    keyboard.add(
-        types.InlineKeyboardButton(
-            "⭐",
-            callback_data="favorite:add"
-        )
-    )
-
-    return keyboard
-
-
-def save_favorite(user_id, text):
-
-    if user_id not in user_favorites:
-        user_favorites[user_id] = []
-
-    if text in user_favorites[user_id]:
+    if not text:
         return False
 
-    user_favorites[user_id].append(text)
+    if len(text.split()) != 1:
+        return False
+
+    if len(text) > 50:
+        return False
+
+    if "http://" in text.lower():
+        return False
+
+    if "https://" in text.lower():
+        return False
+
+    if re.fullmatch(
+        r"[\d\W_]+",
+        text
+    ):
+        return False
 
     return True
 
 
-# =========================================================
-# START
-# =========================================================
+# ============================================================
+# TILNI ANIQLASH
+# ============================================================
+
+def detect_language(text: str) -> str:
+
+    text = text.strip()
+
+    if re.search(
+        r"[\u0600-\u06FF]",
+        text
+    ):
+        return "ar"
+
+    if re.search(
+        r"[\uAC00-\uD7AF]",
+        text
+    ):
+        return "ko"
+
+    if re.search(
+        r"[\u4E00-\u9FFF]",
+        text
+    ):
+        return "zh"
+
+    if re.search(
+        r"[А-Яа-яЁё]",
+        text
+    ):
+        return "ru"
+
+    if re.search(
+        r"[ʻ’‘ʼ]",
+        text
+    ):
+        return "uz"
+
+    uz_words = {
+        "men",
+        "sen",
+        "u",
+        "biz",
+        "siz",
+        "ular",
+        "salom",
+        "qanday",
+        "nima",
+        "uchun",
+        "bilan",
+        "emas",
+        "ha",
+        "yo‘q",
+        "yoq",
+        "maktab",
+        "kitob",
+        "yaxshi",
+        "kerak",
+        "boladi"
+    }
+
+    words = re.findall(
+        r"[A-Za-zÀ-ÿʻ’‘ʼ-]+",
+        text.lower()
+    )
+
+    if any(
+        word in uz_words
+        for word in words
+    ):
+        return "uz"
+
+    return "en"
+
+
+# ============================================================
+# DICTIONARY API
+# ============================================================
+
+def dictionary_meanings(word: str):
+
+    try:
+
+        encoded = urllib.parse.quote(
+            word
+        )
+
+        url = (
+            "https://api.dictionaryapi.dev/api/v2/entries/en/"
+            + encoded
+        )
+
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent":
+                    "SuperTranslatorBot/1.0"
+            }
+        )
+
+        with urllib.request.urlopen(
+            request,
+            timeout=8
+        ) as response:
+
+            data = json.loads(
+                response.read().decode(
+                    "utf-8"
+                )
+            )
+
+        meanings = []
+
+        if isinstance(data, list):
+
+            for entry in data:
+
+                for meaning in entry.get(
+                    "meanings",
+                    []
+                ):
+
+                    part = meaning.get(
+                        "partOfSpeech",
+                        ""
+                    )
+
+                    for definition in meaning.get(
+                        "definitions",
+                        []
+                    ):
+
+                        definition_text = (
+                            definition.get(
+                                "definition",
+                                ""
+                            )
+                        )
+
+                        if definition_text:
+
+                            if part:
+
+                                item = (
+                                    f"• <b>{part}</b>: "
+                                    f"{definition_text}"
+                                )
+
+                            else:
+
+                                item = (
+                                    f"• {definition_text}"
+                                )
+
+                            if item not in meanings:
+                                meanings.append(item)
+
+                        if len(meanings) >= 8:
+                            break
+
+                    if len(meanings) >= 8:
+                        break
+
+                if len(meanings) >= 8:
+                    break
+
+        return meanings
+
+    except Exception as e:
+
+        logger.warning(
+            "Dictionary error: %s",
+            e
+        )
+
+        return []
+
+
+# ============================================================
+# SO'Z MA'NOLARI
+# ============================================================
+
+def get_word_meanings(
+    word: str,
+    target_lang: str
+):
+
+    source_lang = detect_language(
+        word
+    )
+
+    meanings = []
+
+    if source_lang == "en":
+
+        meanings = dictionary_meanings(
+            word
+        )
+
+    translation = translate_text(
+        word,
+        LANGUAGES[target_lang]["google"]
+    )
+
+    return meanings, translation
+
+
+# ============================================================
+# SO'ZGA JAVOB
+# ============================================================
+
+def make_word_response(
+    user_id: int,
+    word: str
+):
+
+    target_lang = get_user_language(
+        user_id
+    )
+
+    meanings, translation = (
+        get_word_meanings(
+            word,
+            LANGUAGES[target_lang]["google"]
+        )
+    )
+
+    if meanings:
+
+        formatted = "\n".join(
+            meanings
+        )
+
+    else:
+
+        formatted = (
+            "• "
+            + (
+                translation
+                or "Tarjima topilmadi"
+            )
+        )
+
+    return TEXTS[target_lang][
+        "word_meanings"
+    ].format(
+        word=word,
+        meanings=formatted,
+        translation=(
+            translation
+            or "—"
+        )
+    )
+
+
+# ============================================================
+# FONT TOPISH
+# ============================================================
+
+def find_font(
+    size: int = 32
+):
+
+    fonts = [
+
+        "/usr/share/fonts/truetype/noto/"
+        "NotoSans-Regular.ttf",
+
+        "/usr/share/fonts/opentype/noto/"
+        "NotoSansCJK-Regular.ttc",
+
+        "/usr/share/fonts/truetype/dejavu/"
+        "DejaVuSans.ttf",
+
+        "C:/Windows/Fonts/arial.ttf",
+
+        "arial.ttf"
+    ]
+
+    for path in fonts:
+
+        try:
+
+            if os.path.exists(path):
+
+                return ImageFont.truetype(
+    path,
+    size
+                            except Exception:
+            continue
+
+    return ImageFont.load_default()
+
+
+# ============================================================
+# OCR UCHUN RASMNI TAYYORLASH
+# ============================================================
+
+def prepare_image_for_ocr(image):
+
+    try:
+        image = image.convert("RGB")
+
+        # Juda kichik rasmlarni kattalashtirish
+        width, height = image.size
+
+        if width < 1200:
+            scale = 1200 / width
+            image = image.resize(
+                (
+                    int(width * scale),
+                    int(height * scale)
+                ),
+                Image.Resampling.LANCZOS
+            )
+
+        return image
+
+    except Exception as e:
+
+        logger.error(
+            "OCR image preparation error: %s",
+            e
+        )
+
+        return image
+
+
+# ============================================================
+# RASMDAN MATN OLISH
+# ============================================================
+
+def extract_text_from_image(
+    image,
+    lang_code: str
+):
+
+    try:
+
+        image = prepare_image_for_ocr(
+            image
+        )
+
+        ocr_lang = LANGUAGES[
+            lang_code
+        ]["ocr"]
+
+        text = pytesseract.image_to_string(
+            image,
+            lang=ocr_lang,
+            config="--psm 6"
+        )
+
+        return text.strip()
+
+    except Exception as e:
+
+        logger.error(
+            "OCR error: %s",
+            e
+        )
+
+        return ""
+
+
+# ============================================================
+# MATNNI QATORLARGA BO'LISH
+# ============================================================
+
+def wrap_text(
+    draw,
+    text,
+    font,
+    max_width
+):
+
+    words = text.split()
+
+    if not words:
+        return []
+
+    lines = []
+    current = ""
+
+    for word in words:
+
+        test = (
+            word
+            if not current
+            else current + " " + word
+        )
+
+        try:
+
+            bbox = draw.textbbox(
+                (0, 0),
+                test,
+                font=font
+            )
+
+            width = (
+                bbox[2] - bbox[0]
+            )
+
+        except Exception:
+
+            width = draw.textlength(
+                test,
+                font=font
+            )
+
+        if width <= max_width:
+
+            current = test
+
+        else:
+
+            if current:
+                lines.append(
+                    current
+                )
+
+            current = word
+
+    if current:
+        lines.append(
+            current
+        )
+
+    return lines
+
+
+# ============================================================
+# TARJIMA QILINGAN RASM YARATISH
+# ============================================================
+
+def create_translated_image(
+    original_image,
+    original_text,
+    translated_text,
+    target_lang
+):
+
+    try:
+
+        image = original_image.convert(
+            "RGB"
+        )
+
+        # Maksimal kenglik
+        max_width = 1400
+
+        if image.width > max_width:
+
+            ratio = (
+                max_width
+                / image.width
+            )
+
+            image = image.resize(
+                (
+                    max_width,
+                    int(
+                        image.height
+                        * ratio
+                    )
+                ),
+                Image.Resampling.LANCZOS
+            )
+
+        font = find_font(30)
+
+        title_font = find_font(36)
+
+        margin = 40
+
+        text_width = (
+            image.width
+            - margin * 2
+        )
+
+        dummy = ImageDraw.Draw(
+            Image.new(
+                "RGB",
+                (1, 1)
+            )
+        )
+
+        original_lines = []
+
+        for paragraph in original_text.splitlines():
+
+            if paragraph.strip():
+
+                original_lines.extend(
+                    wrap_text(
+                        dummy,
+                        paragraph,
+                        font,
+                        text_width
+                    )
+                )
+
+        translated_lines = []
+
+        for paragraph in translated_text.splitlines():
+
+            if paragraph.strip():
+
+                translated_lines.extend(
+                    wrap_text(
+                        dummy,
+                        paragraph,
+                        font,
+                        text_width
+                    )
+                )
+
+        line_height = 45
+
+        original_height = max(
+            80,
+            len(original_lines)
+            * line_height
+            + 80
+        )
+
+        translated_height = max(
+            80,
+            len(translated_lines)
+            * line_height
+            + 80
+        )
+
+        total_height = (
+            image.height
+            + original_height
+            + translated_height
+            + 20
+        )
+
+        canvas = Image.new(
+            "RGB",
+            (
+                image.width,
+                total_height
+            ),
+            "white"
+        )
+
+        canvas.paste(
+            image,
+            (0, 0)
+        )
+
+        draw = ImageDraw.Draw(
+            canvas
+        )
+
+        # Original matn
+        y = image.height + 20
+
+        draw.text(
+            (
+                margin,
+                y
+            ),
+            "Original:",
+            font=title_font,
+            fill="black"
+        )
+
+        y += 50
+
+        for line in original_lines:
+
+            draw.text(
+                (
+                    margin,
+                    y
+                ),
+                line,
+                font=font,
+                fill="black"
+            )
+
+            y += line_height
+
+        # Tarjima
+        y += 20
+
+        draw.text(
+            (
+                margin,
+                y
+            ),
+            "Translation:",
+            font=title_font,
+            fill="black"
+        )
+
+        y += 50
+
+        for line in translated_lines:
+
+            draw.text(
+                (
+                    margin,
+                    y
+                ),
+                line,
+                font=font,
+                fill="black"
+            )
+
+            y += line_height
+
+        output = io.BytesIO()
+
+        output.name = (
+            "translated_image.jpg"
+        )
+
+        canvas.save(
+            output,
+            format="JPEG",
+            quality=95
+        )
+
+        output.seek(0)
+
+        return output
+
+    except Exception as e:
+
+        logger.error(
+            "Create image error: %s",
+            e
+        )
+
+        return None
+
+
+# ============================================================
+# /START
+# ============================================================
 
 @bot.message_handler(
     commands=["start"]
@@ -849,163 +1352,77 @@ def start_handler(message):
 
     user_id = message.from_user.id
 
-    get_lang(user_id)
-
-    bot.send_message(
-        message.chat.id,
-        txt(user_id, "start"),
-        reply_markup=main_keyboard(user_id)
+    lang = get_user_language(
+        user_id
     )
 
     bot.send_message(
         message.chat.id,
-        txt(user_id, "choose_lang"),
-        reply_markup=language_keyboard()
+        TEXTS[lang]["welcome"],
+        parse_mode="HTML",
+        reply_markup=main_keyboard(
+            user_id
+        )
     )
 
 
-# =========================================================
-# ABOUT
-# =========================================================
-
-@bot.message_handler(
-    func=lambda message:
-    message.text in [
-        TEXTS[lang]["about"]
-        for lang in TEXTS
-    ]
-)
-def about_handler(message):
-
-    user_id = message.from_user.id
-
-    bot.send_message(
-        message.chat.id,
-        txt(user_id, "about_text"),
-        reply_markup=main_keyboard(user_id)
-    )
-
-
-# =========================================================
-# HELP
-# =========================================================
+# ============================================================
+# /HELP
+# ============================================================
 
 @bot.message_handler(
     commands=["help"]
 )
-def help_command(message):
+def help_handler(message):
 
     user_id = message.from_user.id
 
     bot.send_message(
         message.chat.id,
-        txt(user_id, "help_text"),
-        reply_markup=main_keyboard(user_id)
+        get_text(
+            user_id,
+            "help"
+        ),
+        parse_mode="HTML",
+        reply_markup=main_keyboard(
+            user_id
+        )
     )
 
 
+# ============================================================
+# /LANGUAGE
+# ============================================================
+
 @bot.message_handler(
-    func=lambda message:
-    message.text in [
-        TEXTS[lang]["help"]
-        for lang in TEXTS
-    ]
+    commands=["language"]
 )
-def help_button_handler(message):
+def language_handler(message):
 
     user_id = message.from_user.id
 
     bot.send_message(
         message.chat.id,
-        txt(user_id, "help_text"),
-        reply_markup=main_keyboard(user_id)
-    )
-
-
-# =========================================================
-# CHANGE LANGUAGE
-# =========================================================
-
-@bot.message_handler(
-    func=lambda message:
-    message.text in [
-        TEXTS[lang]["change_lang"]
-        for lang in TEXTS
-    ]
-)
-def change_language_handler(message):
-
-    user_id = message.from_user.id
-
-    bot.send_message(
-        message.chat.id,
-        txt(user_id, "choose_lang"),
+        get_text(
+            user_id,
+            "language"
+        ),
+        parse_mode="HTML",
         reply_markup=language_keyboard()
     )
 
 
-# =========================================================
-# FAVORITES
-# =========================================================
-
-@bot.message_handler(
-    func=lambda message:
-    message.text in [
-        TEXTS[lang]["favorites"]
-        for lang in TEXTS
-    ]
-)
-def favorites_handler(message):
-    user_id = message.from_user.id
-
-    favorites = user_favorites.get(
-        user_id,
-        []
-    )
-
-    if not favorites:
-
-        bot.send_message(
-            message.chat.id,
-            txt(
-                user_id,
-                "favorites_empty"
-            ),
-            reply_markup=main_keyboard(user_id)
-        )
-
-        return
-
-    result = txt(
-        user_id,
-        "favorites_title"
-    )
-
-    for i, favorite in enumerate(
-        favorites,
-        1
-    ):
-
-        result += (
-            f"{i}. {favorite}\n\n"
-        )
-
-    bot.send_message(
-        message.chat.id,
-        result,
-        reply_markup=main_keyboard(user_id)
-    )
-
-
-# =========================================================
-# LANGUAGE CALLBACK
-# =========================================================
+# ============================================================
+# TIL TANLASH
+# ============================================================
 
 @bot.callback_query_handler(
     func=lambda call:
-    call.data.startswith("lang:")
+        call.data.startswith("lang:")
 )
 def language_callback(call):
+
+    user_id = call.from_user.id
 
     lang = call.data.split(
         ":",
@@ -1013,307 +1430,274 @@ def language_callback(call):
     )[1]
 
     if lang not in LANGUAGES:
+
+        bot.answer_callback_query(
+            call.id,
+            "❌ Error"
+        )
+
         return
 
-    user_id = call.from_user.id
-
-    user_languages[user_id] = lang
-
-    bot.answer_callback_query(
-        call.id,
-        txt(
-            user_id,
-            "language_changed"
-        )
+    set_user_language(
+        user_id,
+        lang
     )
 
+    language_name = LANGUAGES[
+        lang
+    ]["name"]
+
     try:
+
+        bot.answer_callback_query(
+            call.id
+        )
 
         bot.edit_message_text(
-            txt(
-                user_id,
-                "language_changed"
+            TEXTS[lang]["selected"].format(
+                language_name
             ),
             call.message.chat.id,
-            call.message.message_id
+            call.message.message_id,
+            parse_mode="HTML"
         )
-
-    except Exception:
-
-        pass
-
-    bot.send_message(
-        call.message.chat.id,
-        txt(
-            user_id,
-            "language_changed"
-        ),
-        reply_markup=main_keyboard(user_id)
-    )
-
-
-# =========================================================
-# FAVORITE CALLBACK
-# =========================================================
-
-@bot.callback_query_handler(
-    func=lambda call:
-    call.data == "favorite:add"
-)
-def favorite_callback(call):
-
-    user_id = call.from_user.id
-
-    text = call.message.text or ""
-
-    if save_favorite(
-        user_id,
-        text
-    ):
-
-        bot.answer_callback_query(
-            call.id,
-            txt(
-                user_id,
-                "favorite_added"
-            )
-        )
-
-    else:
-
-        bot.answer_callback_query(
-            call.id,
-            txt(
-                user_id,
-                "favorite_exists"
-            )
-        )
-
-
-# =========================================================
-# VIDEO OCR
-# =========================================================
-
-def extract_video_text(video_path):
-
-    texts = []
-
-    video = None
-
-    try:
-
-        video = VideoFileClip(
-            video_path
-        )
-
-        duration = video.duration
-
-        # Maksimal 12 ta kadr tekshiriladi
-        frame_count = min(
-            12,
-            max(
-                1,
-                int(duration / 2)
-            )
-        )
-
-        for i in range(
-            frame_count
-        ):
-
-            if frame_count == 1:
-
-                timestamp = 0
-
-            else:
-
-                timestamp = (
-                    duration
-                    * i
-                    / (frame_count - 1)
-                )
-
-            try:
-
-                frame = video.get_frame(
-                    timestamp
-                )
-
-                image = Image.fromarray(
-                    frame
-                )
-
-                # Faqat ekrandagi yozuv
-                # Audio umuman ishlatilmaydi
-                text = pytesseract.image_to_string(
-                    image,
-                    lang="eng"
-                )
-
-                text = text.strip()
-
-                if not text:
-                    continue
-
-                for line in text.splitlines():
-
-                    line = line.strip()
-
-                    if (
-                        line
-                        and line not in texts
-                    ):
-
-                        texts.append(line)
-
-            except Exception as e:
-
-                print(
-                    "Frame OCR error:",
-                    e
-                )
-
-        return "\n".join(texts)
 
     except Exception as e:
 
-        print(
-            "Video OCR error:",
+        logger.warning(
+            "Language callback error: %s",
             e
         )
 
-        return ""
-
-    finally:
-
-        if video is not None:
-
-            try:
-                video.close()
-            except Exception:
-                pass
+    bot.send_message(
+        call.message.chat.id,
+        TEXTS[lang]["welcome"],
+        parse_mode="HTML",
+        reply_markup=main_keyboard(
+            user_id
+        )
+    )
 
 
-# =========================================================
-# VIDEO HANDLER
-# =========================================================
+# ============================================================
+# HAQIDA TUGMASI
+# ============================================================
 
 @bot.message_handler(
-    content_types=["video"]
+    func=lambda message:
+        message.text
+        and message.text in [
+            TEXTS[lang]["buttons"]["about"]
+            for lang in TEXTS
+        ]
 )
-def video_handler(message):
+def about_handler(message):
 
     user_id = message.from_user.id
 
     bot.send_message(
         message.chat.id,
-        txt(
+        get_text(
             user_id,
-            "video_processing"
+            "about"
+        ),
+        parse_mode="HTML",
+        reply_markup=main_keyboard(
+            user_id
         )
     )
 
-    video_path = None
+
+# ============================================================
+# YORDAM TUGMASI
+# ============================================================
+
+@bot.message_handler(
+    func=lambda message:
+        message.text
+        and message.text in [
+            TEXTS[lang]["buttons"]["help"]
+            for lang in TEXTS
+        ]
+)
+def help_button_handler(message):
+
+    user_id = message.from_user.id
+
+    bot.send_message(
+        message.chat.id,
+        get_text(
+            user_id,
+            "help"
+        ),
+        parse_mode="HTML",
+        reply_markup=main_keyboard(
+                    user_id
+        )
+    )
+
+
+# ============================================================
+# TILNI O'ZGARTIRISH TUGMASI
+# ============================================================
+
+@bot.message_handler(
+    func=lambda message:
+        message.text
+        and message.text in [
+            TEXTS[lang]["buttons"]["language"]
+            for lang in TEXTS
+        ]
+)
+def language_button_handler(message):
+
+    user_id = message.from_user.id
+
+    bot.send_message(
+        message.chat.id,
+        get_text(
+            user_id,
+            "language"
+        ),
+        parse_mode="HTML",
+        reply_markup=language_keyboard()
+    )
+
+
+# ============================================================
+# RASM / OCR TARJIMA
+# ============================================================
+
+@bot.message_handler(
+    content_types=["photo"]
+)
+def photo_handler(message):
+
+    user_id = message.from_user.id
+
+    lang = get_user_language(
+        user_id
+    )
 
     try:
 
-        file_info = bot.get_file(
-            message.video.file_id
+        bot.send_chat_action(
+            message.chat.id,
+            "typing"
         )
 
-        downloaded = bot.download_file(
+        file_info = bot.get_file(
+            message.photo[-1].file_id
+        )
+
+        downloaded_file = bot.download_file(
             file_info.file_path
         )
 
-        video_path = tempfile.mktemp(
-            suffix=".mp4"
+        image = Image.open(
+            io.BytesIO(
+                downloaded_file
+            )
         )
 
-        with open(
-            video_path,
-            "wb"
-        ) as file:
-
-            file.write(downloaded)
-
-        # Faqat videodagi yozuvlar
-        extracted_text = extract_video_text(
-            video_path
+        original_text = extract_text_from_image(
+            image,
+            lang
         )
 
-        if not extracted_text.strip():
+        if not original_text:
 
             bot.send_message(
                 message.chat.id,
-                txt(
+                get_text(
                     user_id,
-                    "video_no_text"
+                    "ocr_error"
+                ),
+                parse_mode="HTML",
+                reply_markup=main_keyboard(
+                    user_id
                 )
             )
 
             return
 
-        target = get_lang(
-            user_id
+        translated_text = translate_text(
+            original_text,
+            LANGUAGES[lang]["google"]
         )
 
-        result = translate_text(
-            extracted_text,
-            target
-        )
-
-        if not result:
+        if not translated_text:
 
             bot.send_message(
                 message.chat.id,
-                txt(
+                get_text(
                     user_id,
                     "translation_error"
+                ),
+                parse_mode="HTML",
+                reply_markup=main_keyboard(
+                    user_id
                 )
             )
 
             return
 
-        bot.send_message(
+        output = create_translated_image(
+            image,
+            original_text,
+            translated_text,
+            lang
+        )
+
+        if output is None:
+
+            bot.send_message(
+                message.chat.id,
+                get_text(
+                    user_id,
+                    "general_error"
+                ),
+                parse_mode="HTML",
+                reply_markup=main_keyboard(
+                    user_id
+                )
+            )
+
+            return
+
+        bot.send_photo(
             message.chat.id,
-            "🎬 <b>Videodagi yozuv:</b>\n\n"
-            f"{extracted_text}\n\n"
-            "🌐 <b>Tarjima:</b>\n\n"
-            f"{result}",
-            reply_markup=favorite_keyboard()
+            output,
+            caption=(
+                "🔤 <b>OCR + Tarjima</b>\n\n"
+                + translated_text
+            ),
+            parse_mode="HTML"
         )
 
     except Exception as e:
 
-        print(
-            "Video error:",
+        logger.error(
+            "Photo handler error: %s",
             e
         )
 
         bot.send_message(
             message.chat.id,
-            txt(
+            get_text(
                 user_id,
-                "video_error"
+                "general_error"
+            ),
+            parse_mode="HTML",
+            reply_markup=main_keyboard(
+                user_id
             )
         )
 
-    finally:
 
-        if (
-            video_path
-            and os.path.exists(video_path)
-        ):
-
-            try:
-                os.remove(video_path)
-            except Exception:
-                pass
-
-
-# =========================================================
-# TEXT HANDLER
-# =========================================================
+# ============================================================
+# MATN TARJIMA
+# ============================================================
 
 @bot.message_handler(
     content_types=["text"]
@@ -1322,124 +1706,267 @@ def text_handler(message):
 
     user_id = message.from_user.id
 
-    text = message.text.strip()
-
-    if not text:
-
-        bot.send_message(
-            message.chat.id,
-            txt(
-                user_id,
-                "empty_text"
-            )
-        )
-
-        return
-
-    # Buyruqlarni o'tkazib yuboramiz
-    if text.startswith("/"):
-        return
-
-    target = get_lang(
+    lang = get_user_language(
         user_id
     )
 
-    # Asosiy tarjima
-    result = translate_text(
-        text,
-        target
-    )
+    text = message.text.strip()
 
-    if not result:
+    if not text:
+        return
 
-        bot.send_message(
-            message.chat.id,
-            txt(
-                user_id,
-                "translation_error"
-            )
-        )
+    # Tugmalar
+    if text in [
+        TEXTS[item]["buttons"]["about"]
+        for item in TEXTS
+    ]:
+
+        about_handler(message)
 
         return
 
-    # Natija
-    response = (
-        "🌐 <b>Tarjima:</b>\n\n"
-        f"{result}"
-    )
+    if text in [
+        TEXTS[item]["buttons"]["help"]
+        for item in TEXTS
+    ]:
 
-    # Agar bitta so'z bo'lsa,
-    # qo'shimcha ma'nolarni ko'rsatamiz
-    if len(text.split()) == 1:
+        help_button_handler(message)
 
-        meanings = get_word_meanings(
-            text,
-            target
+        return
+
+    if text in [
+        TEXTS[item]["buttons"]["language"]
+        for item in TEXTS
+    ]:
+
+        language_button_handler(message)
+
+        return
+
+    try:
+
+        bot.send_chat_action(
+            message.chat.id,
+            "typing"
         )
 
-        if meanings:
+        # Bitta so'z bo'lsa
+        if is_single_word(text):
 
-            response += (
-                "\n\n📚 <b>Asosiy ma'nolari:</b>\n\n"
-                + "\n".join(meanings)
+            response = make_word_response(
+                user_id,
+                text
             )
 
-    bot.send_message(
-        message.chat.id,
-        response,
-        reply_markup=favorite_keyboard()
+        else:
+
+            translated = translate_text(
+                text,
+                LANGUAGES[lang]["google"]
+            )
+
+            if not translated:
+
+                bot.send_message(
+                    message.chat.id,
+                    get_text(
+                        user_id,
+                        "translation_error"
+                    ),
+                    parse_mode="HTML",
+                    reply_markup=main_keyboard(
+                        user_id
+                    )
+                )
+
+                return
+
+            response = (
+                "🌐 <b>Tarjima:</b>\n\n"
+                + translated
+            )
+
+        bot.send_message(
+            message.chat.id,
+            response,
+            parse_mode="HTML",
+            reply_markup=main_keyboard(
+                user_id
+            )
+        )
+
+    except Exception as e:
+
+        logger.error(
+            "Text handler error: %s",
+            e
+        )
+
+        bot.send_message(
+            message.chat.id,
+            get_text(
+                user_id,
+                "general_error"
+            ),
+            parse_mode="HTML",
+            reply_markup=main_keyboard(
+                user_id
+            )
+        )
+
+
+# ============================================================
+# TXT FAYL TARJIMA
+# ============================================================
+
+@bot.message_handler(
+    content_types=["document"]
+)
+def document_handler(message):
+
+    user_id = message.from_user.id
+
+    lang = get_user_language(
+        user_id
     )
 
+    try:
 
-# =========================================================
-# FLASK
-# =========================================================
+        file_name = (
+            message.document.file_name
+            or ""
+        ).lower()
 
-app = Flask(__name__)
+        if not file_name.endswith(
+            ".txt"
+        ):
+
+            bot.send_message(
+                message.chat.id,
+                get_text(
+                    user_id,
+                    "file_error"
+                ),
+                parse_mode="HTML",
+                reply_markup=main_keyboard(
+                    user_id
+                )
+            )
+
+            return
+
+        bot.send_chat_action(
+            message.chat.id,
+            "typing"
+        )
+
+        file_info = bot.get_file(
+            message.document.file_id
+        )
+
+        downloaded_file = bot.download_file(
+            file_info.file_path
+        )
+
+        text = downloaded_file.decode(
+            "utf-8",
+            errors="ignore"
+        ).strip()
+
+        if not text:
+
+            bot.send_message(
+                message.chat.id,
+                get_text(
+                    user_id,
+                    "empty_file"
+                ),
+                parse_mode="HTML",
+                reply_markup=main_keyboard(
+                    user_id
+                )
+            )
+
+            return
+
+        translated = translate_text(
+            text,
+            LANGUAGES[lang]["google"]
+        )
+
+        if not translated:
+
+            bot.send_message(
+                message.chat.id,
+                get_text(
+                    user_id,
+                    "translation_error"
+                ),
+                parse_mode="HTML",
+                reply_markup=main_keyboard(
+                    user_id
+                )
+            )
+
+            return
+
+        bot.send_message(
+            message.chat.id,
+            (
+                "📄 <b>Fayl tarjimasi:</b>\n\n"
+                + translated
+            ),
+            parse_mode="HTML",
+            reply_markup=main_keyboard(
+                user_id
+            )
+        )
+
+    except Exception as e:
+
+        logger.error(
+            "Document handler error: %s",
+            e
+        )
+
+        bot.send_message(
+            message.chat.id,
+            get_text(
+                user_id,
+                "general_error"
+            ),
+            parse_mode="HTML",
+            reply_markup=main_keyboard(
+                user_id
+            )
+        )
 
 
-@app.route("/")
-def home():
-
-    return "Fast Translator Bot is running!"
-
-
-# =========================================================
+# ============================================================
 # BOTNI ISHGA TUSHIRISH
-# =========================================================
-
-def run_bot():
-
-    print(
-        "Fast Translator Bot ishga tushdi..."
-    )
-
-    bot.infinity_polling(
-        skip_pending=True,
-        timeout=60,
-        long_polling_timeout=60
-    )
-
-
-# =========================================================
-# START
-# =========================================================
+# ============================================================
 
 if __name__ == "__main__":
 
-    threading.Thread(
-        target=run_bot,
-        daemon=True
-    ).start()
-
-    port = int(
-        os.environ.get(
-            "PORT",
-            8080
-        )
+    logger.info(
+        "🤖 Super Tarjimon Bot ishga tushmoqda..."
     )
 
-    app.run(
-        host="0.0.0.0",
-        port=port
+    while True:
+
+        try:
+
+            bot.infinity_polling(
+                skip_pending=True,
+                timeout=60,
+                long_polling_timeout=60
             )
+
+        except Exception as e:
+
+            logger.error(
+                "Bot polling xatosi: %s",
+                e
+            )
+
+            time.sleep(5)
