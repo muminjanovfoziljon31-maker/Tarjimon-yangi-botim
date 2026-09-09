@@ -2,7 +2,3 @@ pyTelegramBotAPI
 deep-translator
 Pillow
 pytesseract
-moviepy
-Flask
-requests
-imageio-ffmpeg
