@@ -983,10 +983,20 @@ def find_font(
 
             if os.path.exists(path):
 
-                return ImageFont.truetype(
-    path,
-    size
-                            except Exception:
+            def find_font(size=32, lang="uz"):
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    ]
+
+    for path in font_paths:
+        try:
+            return ImageFont.truetype(
+                path,
+                size
+            )
+        except Exception:
             continue
 
     return ImageFont.load_default()
