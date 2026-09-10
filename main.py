@@ -537,7 +537,63 @@ TEXTS = {
 
 
 # ============================================================
-# MATN TARJIMA QILISH
+# TEXT FUNKSIYASI
+# ============================================================
+
+def t(user_id: int, key: str) -> str:
+    lang = get_user_language(user_id)
+    return TEXTS[lang][key]
+
+
+# ============================================================
+# ASOSIY KLAVIATURA
+# ============================================================
+
+def main_keyboard(user_id: int):
+    lang = get_user_language(user_id)
+
+    keyboard = types.ReplyKeyboardMarkup(
+        resize_keyboard=True,
+        row_width=2
+    )
+
+    keyboard.add(
+        types.KeyboardButton(TEXTS[lang]["buttons"]["language"]),
+        types.KeyboardButton(TEXTS[lang]["buttons"]["about"])
+    )
+
+    keyboard.add(
+        types.KeyboardButton(TEXTS[lang]["buttons"]["help"])
+    )
+
+    return keyboard
+
+
+# ============================================================
+# TIL TANLASH INLINE KEYBOARD
+# ============================================================
+
+def language_keyboard():
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+
+    buttons = []
+
+    for code, data in LANGUAGES.items():
+        buttons.append(
+            types.InlineKeyboardButton(
+                data["name"],
+                callback_data=f"lang:{code}"
+            )
+        )
+
+    for i in range(0, len(buttons), 2):
+        keyboard.row(*buttons[i:i + 2])
+
+    return keyboard
+
+
+# ============================================================
+# GOOGLE TRANSLATOR
 # ============================================================
 
 def translate_text(text: str, target_lang: str) -> str:
@@ -546,6 +602,7 @@ def translate_text(text: str, target_lang: str) -> str:
         return ""
 
     try:
+
         result = GoogleTranslator(
             source="auto",
             target=target_lang
@@ -554,188 +611,44 @@ def translate_text(text: str, target_lang: str) -> str:
         return result if result else ""
 
     except Exception as e:
+
         logger.error(
             "Translation error: %s",
             e
         )
+
         return ""
 
 
 # ============================================================
-# FOYDALANUVCHI TILI
-# ============================================================
-
-def get_user_language(user_id: int) -> str:
-    return user_languages.get(
-        user_id,
-        "uz"
-    )
-
-
-def set_user_language(
-    user_id: int,
-    lang: str
-):
-
-    if lang in LANGUAGES:
-        user_languages[user_id] = lang
-
-
-# ============================================================
-# MATN OLISH
-# ============================================================
-
-def get_text(
-    user_id: int,
-    key: str
-):
-
-    lang = get_user_language(
-        user_id
-    )
-
-    return TEXTS[lang].get(
-        key,
-        ""
-    )
-
-
-# ============================================================
-# ASOSIY KLAVIATURA
-# ============================================================
-
-def main_keyboard(user_id: int):
-
-    lang = get_user_language(
-        user_id
-    )
-
-    keyboard = types.ReplyKeyboardMarkup(
-        resize_keyboard=True
-    )
-
-    keyboard.row(
-        types.KeyboardButton(
-            TEXTS[lang]["buttons"]["language"]
-        ),
-        types.KeyboardButton(
-            TEXTS[lang]["buttons"]["about"]
-        )
-    )
-
-    keyboard.row(
-        types.KeyboardButton(
-            TEXTS[lang]["buttons"]["help"]
-        )
-    )
-
-    return keyboard
-
-
-# ============================================================
-# TIL TANLASH KLAVIATURASI
-# ============================================================
-
-def language_keyboard():
-
-    keyboard = types.InlineKeyboardMarkup(
-        row_width=2
-    )
-
-    buttons = []
-
-    for code, data in LANGUAGES.items():
-
-        buttons.append(
-            types.InlineKeyboardButton(
-                data["name"],
-                callback_data=f"lang:{code}"
-            )
-        )
-
-    for i in range(
-        0,
-        len(buttons),
-        2
-    ):
-
-        keyboard.row(
-            *buttons[i:i + 2]
-        )
-
-    return keyboard
-
-
-# ============================================================
-# SO'ZNING BIRTA SO'Z EKANINI ANIQLASH
-# ============================================================
-
-def is_single_word(text: str) -> bool:
-
-    text = text.strip()
-
-    if not text:
-        return False
-
-    if len(text.split()) != 1:
-        return False
-
-    if len(text) > 50:
-        return False
-
-    if "http://" in text.lower():
-        return False
-
-    if "https://" in text.lower():
-        return False
-
-    if re.fullmatch(
-        r"[\d\W_]+",
-        text
-    ):
-        return False
-
-    return True
-
-
-# ============================================================
-# TILNI ANIQLASH
+# MATN TILINI TAXMIN QILISH
 # ============================================================
 
 def detect_language(text: str) -> str:
 
     text = text.strip()
 
-    if re.search(
-        r"[\u0600-\u06FF]",
-        text
-    ):
+    # Arabic
+    if re.search(r"[\u0600-\u06FF]", text):
         return "ar"
 
-    if re.search(
-        r"[\uAC00-\uD7AF]",
-        text
-    ):
+    # Korean
+    if re.search(r"[\uAC00-\uD7AF]", text):
         return "ko"
 
-    if re.search(
-        r"[\u4E00-\u9FFF]",
-        text
-    ):
+    # Chinese
+    if re.search(r"[\u4E00-\u9FFF]", text):
         return "zh"
 
-    if re.search(
-        r"[А-Яа-яЁё]",
-        text
-    ):
+    # Cyrillic
+    if re.search(r"[А-Яа-яЁё]", text):
         return "ru"
 
-    if re.search(
-        r"[ʻ’‘ʼ]",
-        text
-    ):
+    # Uzbek special letters
+    if re.search(r"[ʻ’‘ʼ]", text):
         return "uz"
 
+    # Uzbek common words
     uz_words = {
         "men",
         "sen",
@@ -756,6 +669,7 @@ def detect_language(text: str) -> str:
         "kitob",
         "yaxshi",
         "kerak",
+        "bo‘ladi",
         "boladi"
     }
 
@@ -764,26 +678,54 @@ def detect_language(text: str) -> str:
         text.lower()
     )
 
-    if any(
-        word in uz_words
-        for word in words
-    ):
+    if any(word in uz_words for word in words):
         return "uz"
 
+    # Default English
     return "en"
 
 
 # ============================================================
-# DICTIONARY API
+# BITTA SO'Z EKANINI ANIQLASH
+# ============================================================
+
+def is_single_word(text: str) -> bool:
+
+    text = text.strip()
+
+    if not text:
+        return False
+
+    # faqat bitta so'z
+    if len(text.split()) != 1:
+        return False
+
+    # juda uzun bo'lmasin
+    if len(text) > 50:
+        return False
+
+    # URL yoki raqam bo'lmasin
+    if "http://" in text.lower():
+        return False
+
+    if "https://" in text.lower():
+        return False
+
+    if re.fullmatch(r"[\d\W_]+", text):
+        return False
+
+    return True
+
+
+# ============================================================
+# ENGLISH DICTIONARY API
 # ============================================================
 
 def dictionary_meanings(word: str):
 
     try:
 
-        encoded = urllib.parse.quote(
-            word
-        )
+        encoded = urllib.parse.quote(word)
 
         url = (
             "https://api.dictionaryapi.dev/api/v2/entries/en/"
@@ -793,8 +735,7 @@ def dictionary_meanings(word: str):
         request = urllib.request.Request(
             url,
             headers={
-                "User-Agent":
-                    "SuperTranslatorBot/1.0"
+                "User-Agent": "SuperTranslatorBot/1.0"
             }
         )
 
@@ -804,9 +745,7 @@ def dictionary_meanings(word: str):
         ) as response:
 
             data = json.loads(
-                response.read().decode(
-                    "utf-8"
-                )
+                response.read().decode("utf-8")
             )
 
         meanings = []
@@ -830,24 +769,19 @@ def dictionary_meanings(word: str):
                         []
                     ):
 
-                        definition_text = (
-                            definition.get(
-                                "definition",
-                                ""
-                            )
+                        definition_text = definition.get(
+                            "definition",
+                            ""
                         )
 
                         if definition_text:
 
                             if part:
-
                                 item = (
                                     f"• <b>{part}</b>: "
                                     f"{definition_text}"
                                 )
-
                             else:
-
                                 item = (
                                     f"• {definition_text}"
                                 )
@@ -869,7 +803,7 @@ def dictionary_meanings(word: str):
     except Exception as e:
 
         logger.warning(
-            "Dictionary error: %s",
+            "Dictionary API error: %s",
             e
         )
 
@@ -877,7 +811,7 @@ def dictionary_meanings(word: str):
 
 
 # ============================================================
-# SO'Z MA'NOLARI
+# SO'Z MA'NOLARINI OLISH
 # ============================================================
 
 def get_word_meanings(
@@ -885,18 +819,16 @@ def get_word_meanings(
     target_lang: str
 ):
 
-    source_lang = detect_language(
-        word
-    )
+    source_lang = detect_language(word)
 
     meanings = []
 
+    # English word uchun dictionary
     if source_lang == "en":
 
-        meanings = dictionary_meanings(
-            word
-        )
+        meanings = dictionary_meanings(word)
 
+    # Tarjima
     translation = translate_text(
         word,
         LANGUAGES[target_lang]["google"]
@@ -906,7 +838,7 @@ def get_word_meanings(
 
 
 # ============================================================
-# SO'ZGA JAVOB
+# SO'Z UCHUN JAVOB
 # ============================================================
 
 def make_word_response(
@@ -918,11 +850,9 @@ def make_word_response(
         user_id
     )
 
-    meanings, translation = (
-        get_word_meanings(
-            word,
-            LANGUAGES[target_lang]["google"]
-        )
+    meanings, translation = get_word_meanings(
+        word,
+        target_lang
     )
 
     if meanings:
@@ -935,10 +865,7 @@ def make_word_response(
 
         formatted = (
             "• "
-            + (
-                translation
-                or "Tarjima topilmadi"
-            )
+            + translation
         )
 
     return TEXTS[target_lang][
@@ -946,10 +873,7 @@ def make_word_response(
     ].format(
         word=word,
         meanings=formatted,
-        translation=(
-            translation
-            or "—"
-        )
+        translation=translation or "—"
     )
 
 
@@ -957,106 +881,99 @@ def make_word_response(
 # FONT TOPISH
 # ============================================================
 
-def find_font(
-    size: int = 32
-):
+def find_font(size: int = 32):
 
-    fonts = [
+    possible_fonts = [
 
-        "/usr/share/fonts/truetype/noto/"
-        "NotoSans-Regular.ttf",
+        # Linux
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
 
-        "/usr/share/fonts/opentype/noto/"
-        "NotoSansCJK-Regular.ttc",
+        # DejaVu
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
 
-        "/usr/share/fonts/truetype/dejavu/"
-        "DejaVuSans.ttf",
-
+        # Windows
         "C:/Windows/Fonts/arial.ttf",
 
-        "arial.ttf"
+        # Local
+        "arial.ttf",
+        "NotoSans-Regular.ttf"
     ]
 
-    for path in fonts:
+    for path in possible_fonts:
 
         try:
 
             if os.path.exists(path):
 
-            def find_font(size=32, lang="uz"):
-    font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    ]
+                return ImageFont.truetype(
+                    path,
+                    size
+                )
 
-    for path in font_paths:
-        try:
-            return ImageFont.truetype(
-                path,
-                size
-            )
         except Exception:
-            continue
+            pass
 
     return ImageFont.load_default()
 
 
 # ============================================================
-# OCR UCHUN RASMNI TAYYORLASH
+# RASMNI OCR UCHUN TAYYORLASH
 # ============================================================
 
-def prepare_image_for_ocr(image):
+def prepare_image_for_ocr(
+    image: Image.Image
+):
 
-    try:
-        image = image.convert("RGB")
+    image = image.convert("RGB")
 
-        # Juda kichik rasmlarni kattalashtirish
-        width, height = image.size
+    # kattalashtirish
+    width, height = image.size
 
-        if width < 1200:
-            scale = 1200 / width
-            image = image.resize(
-                (
-                    int(width * scale),
-                    int(height * scale)
-                ),
-                Image.Resampling.LANCZOS
+    if width < 1200:
+
+        ratio = 1200 / width
+
+        image = image.resize(
+            (
+                int(width * ratio),
+                int(height * ratio)
             )
-
-        return image
-
-    except Exception as e:
-
-        logger.error(
-            "OCR image preparation error: %s",
-            e
         )
 
-        return image
+    # grayscale
+    gray = image.convert("L")
+
+    # kontrast
+    gray = gray.filter(
+        ImageFilter.SHARPEN
+    )
+
+    return gray
 
 
 # ============================================================
-# RASMDAN MATN OLISH
+# OCR
 # ============================================================
 
 def extract_text_from_image(
-    image,
-    lang_code: str
+    image: Image.Image,
+    target_lang: str
 ):
+
+    prepared = prepare_image_for_ocr(
+        image
+    )
+
+    ocr_lang = LANGUAGES[
+        target_lang
+    ]["ocr"]
 
     try:
 
-        image = prepare_image_for_ocr(
-            image
-        )
-
-        ocr_lang = LANGUAGES[
-            lang_code
-        ]["ocr"]
-
         text = pytesseract.image_to_string(
-            image,
+            prepared,
             lang=ocr_lang,
             config="--psm 6"
         )
@@ -1065,16 +982,35 @@ def extract_text_from_image(
 
     except Exception as e:
 
-        logger.error(
-            "OCR error: %s",
+        logger.warning(
+            "OCR error with %s: %s",
+            ocr_lang,
             e
         )
 
-        return ""
+        # fallback English
+        try:
+
+            text = pytesseract.image_to_string(
+                prepared,
+                lang="eng",
+                config="--psm 6"
+            )
+
+            return text.strip()
+
+        except Exception as second_error:
+
+            logger.error(
+                "Fallback OCR error: %s",
+                second_error
+            )
+
+            return ""
 
 
 # ============================================================
-# MATNNI QATORLARGA BO'LISH
+# MATNNI QATORLARGA AJRATISH
 # ============================================================
 
 def wrap_text(
@@ -1086,38 +1022,23 @@ def wrap_text(
 
     words = text.split()
 
-    if not words:
-        return []
-
     lines = []
+
     current = ""
 
     for word in words:
 
         test = (
-            word
-            if not current
-            else current + " " + word
+            current + " " + word
+        ).strip()
+
+        bbox = draw.textbbox(
+            (0, 0),
+            test,
+            font=font
         )
 
-        try:
-
-            bbox = draw.textbbox(
-                (0, 0),
-                test,
-                font=font
-            )
-
-            width = (
-                bbox[2] - bbox[0]
-            )
-
-        except Exception:
-
-            width = draw.textlength(
-                test,
-                font=font
-            )
+        width = bbox[2] - bbox[0]
 
         if width <= max_width:
 
@@ -1126,16 +1047,12 @@ def wrap_text(
         else:
 
             if current:
-                lines.append(
-                    current
-                )
+                lines.append(current)
 
             current = word
 
     if current:
-        lines.append(
-            current
-        )
+        lines.append(current)
 
     return lines
 
@@ -1145,231 +1062,177 @@ def wrap_text(
 # ============================================================
 
 def create_translated_image(
-    original_image,
-    original_text,
-    translated_text,
-    target_lang
+    original_image: Image.Image,
+    translated_text: str,
+    original_text: str
 ):
 
-    try:
+    image = original_image.convert(
+        "RGB"
+    )
 
-        image = original_image.convert(
-            "RGB"
-        )
+    width, height = image.size
 
-        # Maksimal kenglik
-        max_width = 1400
+    # juda katta rasmni kamaytirish
+    max_width = 1600
 
-        if image.width > max_width:
+    if width > max_width:
 
-            ratio = (
-                max_width
-                / image.width
-            )
+        ratio = max_width / width
 
-            image = image.resize(
-                (
-                    max_width,
-                    int(
-                        image.height
-                        * ratio
-                    )
-                ),
-                Image.Resampling.LANCZOS
-            )
-
-        font = find_font(30)
-
-        title_font = find_font(36)
-
-        margin = 40
-
-        text_width = (
-            image.width
-            - margin * 2
-        )
-
-        dummy = ImageDraw.Draw(
-            Image.new(
-                "RGB",
-                (1, 1)
-            )
-        )
-
-        original_lines = []
-
-        for paragraph in original_text.splitlines():
-
-            if paragraph.strip():
-
-                original_lines.extend(
-                    wrap_text(
-                        dummy,
-                        paragraph,
-                        font,
-                        text_width
-                    )
-                )
-
-        translated_lines = []
-
-        for paragraph in translated_text.splitlines():
-
-            if paragraph.strip():
-
-                translated_lines.extend(
-                    wrap_text(
-                        dummy,
-                        paragraph,
-                        font,
-                        text_width
-                    )
-                )
-
-        line_height = 45
-
-        original_height = max(
-            80,
-            len(original_lines)
-            * line_height
-            + 80
-        )
-
-        translated_height = max(
-            80,
-            len(translated_lines)
-            * line_height
-            + 80
-        )
-
-        total_height = (
-            image.height
-            + original_height
-            + translated_height
-            + 20
-        )
-
-        canvas = Image.new(
-            "RGB",
+        image = image.resize(
             (
-                image.width,
-                total_height
-            ),
-            "white"
+                int(width * ratio),
+                int(height * ratio)
+            )
         )
 
-        canvas.paste(
-            image,
-            (0, 0)
-        )
+        width, height = image.size
 
-        draw = ImageDraw.Draw(
-            canvas
-        )
+    # font
+    font_size = max(
+        24,
+        min(48, width // 30)
+    )
 
-        # Original matn
-        y = image.height + 20
+    font = find_font(
+        font_size
+    )
+
+    small_font = find_font(
+        max(18, font_size - 8)
+    )
+
+    # vaqtincha draw
+    temp_draw = ImageDraw.Draw(
+        image
+    )
+
+    # tarjimani wrap qilish
+    lines = wrap_text(
+        temp_draw,
+        translated_text,
+        font,
+        width - 80
+    )
+
+    # original text ham juda uzun bo'lsa
+    original_lines = wrap_text(
+        temp_draw,
+        original_text,
+        small_font,
+        width - 80
+    )
+
+    line_height = font_size + 12
+
+    small_line_height = (
+        max(18, font_size - 8) + 8
+    )
+
+    translation_height = (
+        90 +
+        len(lines) * line_height
+    )
+
+    original_height = (
+        50 +
+        len(original_lines) *
+        small_line_height
+    )
+
+    extra_height = (
+        translation_height +
+        original_height +
+        30
+    )
+
+    # yangi canvas
+    new_image = Image.new(
+        "RGB",
+        (
+            width,
+            height + extra_height
+        ),
+        "white"
+    )
+
+    # original image
+    new_image.paste(
+        image,
+        (0, 0)
+    )
+
+    draw = ImageDraw.Draw(
+        new_image
+    )
+
+    y = height + 15
+
+    # Original
+    draw.text(
+        (30, y),
+        "Original:",
+        font=small_font,
+        fill="black"
+    )
+
+    y += small_line_height
+
+    for line in original_lines:
 
         draw.text(
-            (
-                margin,
-                y
-            ),
-            "Original:",
-            font=title_font,
+            (30, y),
+            line,
+            font=small_font,
             fill="black"
         )
 
-        y += 50
+        y += small_line_height
 
-        for line in original_lines:
+    # Translation
+    y += 10
 
-            draw.text(
-                (
-                    margin,
-                    y
-                ),
-                line,
-                font=font,
-                fill="black"
-            )
+    draw.text(
+        (30, y),
+        "Translation:",
+        font=font,
+        fill="black"
+    )
 
-            y += line_height
+    y += line_height
 
-        # Tarjima
-        y += 20
+    for line in lines:
 
         draw.text(
-            (
-                margin,
-                y
-            ),
-            "Translation:",
-            font=title_font,
+            (30, y),
+            line,
+            font=font,
             fill="black"
         )
 
-        y += 50
+        y += line_height
 
-        for line in translated_lines:
-
-            draw.text(
-                (
-                    margin,
-                    y
-                ),
-                line,
-                font=font,
-                fill="black"
-            )
-
-            y += line_height
-
-        output = io.BytesIO()
-
-        output.name = (
-            "translated_image.jpg"
-        )
-
-        canvas.save(
-            output,
-            format="JPEG",
-            quality=95
-        )
-
-        output.seek(0)
-
-        return output
-
-    except Exception as e:
-
-        logger.error(
-            "Create image error: %s",
-            e
-        )
-
-        return None
+    return new_image
 
 
 # ============================================================
-# /START
+# START
 # ============================================================
 
 @bot.message_handler(
     commands=["start"]
 )
-def start_handler(message):
+def start_command(message):
 
     user_id = message.from_user.id
 
-    lang = get_user_language(
-        user_id
-    )
+    if user_id not in user_languages:
+        user_languages[user_id] = "uz"
 
     bot.send_message(
         message.chat.id,
-        TEXTS[lang]["welcome"],
-        parse_mode="HTML",
+        t(user_id, "welcome"),
         reply_markup=main_keyboard(
             user_id
         )
@@ -1377,23 +1240,19 @@ def start_handler(message):
 
 
 # ============================================================
-# /HELP
+# HELP
 # ============================================================
 
 @bot.message_handler(
     commands=["help"]
 )
-def help_handler(message):
+def help_command(message):
 
     user_id = message.from_user.id
 
     bot.send_message(
         message.chat.id,
-        get_text(
-            user_id,
-            "help"
-        ),
-        parse_mode="HTML",
+        t(user_id, "help"),
         reply_markup=main_keyboard(
             user_id
         )
@@ -1401,34 +1260,30 @@ def help_handler(message):
 
 
 # ============================================================
-# /LANGUAGE
+# LANGUAGE COMMAND
 # ============================================================
 
 @bot.message_handler(
     commands=["language"]
 )
-def language_handler(message):
+def language_command(message):
 
     user_id = message.from_user.id
 
     bot.send_message(
         message.chat.id,
-        get_text(
-            user_id,
-            "language"
-        ),
-        parse_mode="HTML",
+        t(user_id, "language"),
         reply_markup=language_keyboard()
     )
 
 
 # ============================================================
-# TIL TANLASH
+# LANGUAGE BUTTON
 # ============================================================
 
 @bot.callback_query_handler(
     func=lambda call:
-        call.data.startswith("lang:")
+    call.data.startswith("lang:")
 )
 def language_callback(call):
 
@@ -1440,12 +1295,6 @@ def language_callback(call):
     )[1]
 
     if lang not in LANGUAGES:
-
-        bot.answer_callback_query(
-            call.id,
-            "❌ Error"
-        )
-
         return
 
     set_user_language(
@@ -1453,36 +1302,20 @@ def language_callback(call):
         lang
     )
 
-    language_name = LANGUAGES[
-        lang
-    ]["name"]
-
     try:
 
         bot.answer_callback_query(
             call.id
         )
 
-        bot.edit_message_text(
-            TEXTS[lang]["selected"].format(
-                language_name
-            ),
-            call.message.chat.id,
-            call.message.message_id,
-            parse_mode="HTML"
-        )
-
-    except Exception as e:
-
-        logger.warning(
-            "Language callback error: %s",
-            e
-        )
+    except Exception:
+        pass
 
     bot.send_message(
         call.message.chat.id,
-        TEXTS[lang]["welcome"],
-        parse_mode="HTML",
+        TEXTS[lang]["selected"].format(
+            LANGUAGES[lang]["name"]
+        ),
         reply_markup=main_keyboard(
             user_id
         )
@@ -1490,92 +1323,77 @@ def language_callback(call):
 
 
 # ============================================================
-# HAQIDA TUGMASI
+# TILNI O'ZGARTIRISH BUTTON
 # ============================================================
 
 @bot.message_handler(
     func=lambda message:
-        message.text
-        and message.text in [
-            TEXTS[lang]["buttons"]["about"]
-            for lang in TEXTS
-        ]
+    message.text in [
+        TEXTS[lang]["buttons"]["language"]
+        for lang in TEXTS
+    ]
 )
-def about_handler(message):
+def language_button(message):
 
     user_id = message.from_user.id
 
     bot.send_message(
         message.chat.id,
-        get_text(
-            user_id,
-            "about"
-        ),
-        parse_mode="HTML",
-        reply_markup=main_keyboard(
-            user_id
-        )
-    )
-
-
-# ============================================================
-# YORDAM TUGMASI
-# ============================================================
-
-@bot.message_handler(
-    func=lambda message:
-        message.text
-        and message.text in [
-            TEXTS[lang]["buttons"]["help"]
-            for lang in TEXTS
-        ]
-)
-def help_button_handler(message):
-
-    user_id = message.from_user.id
-
-    bot.send_message(
-        message.chat.id,
-        get_text(
-            user_id,
-            "help"
-        ),
-        parse_mode="HTML",
-        reply_markup=main_keyboard(
-                    user_id
-        )
-    )
-
-
-# ============================================================
-# TILNI O'ZGARTIRISH TUGMASI
-# ============================================================
-
-@bot.message_handler(
-    func=lambda message:
-        message.text
-        and message.text in [
-            TEXTS[lang]["buttons"]["language"]
-            for lang in TEXTS
-        ]
-)
-def language_button_handler(message):
-
-    user_id = message.from_user.id
-
-    bot.send_message(
-        message.chat.id,
-        get_text(
-            user_id,
-            "language"
-        ),
-        parse_mode="HTML",
+        t(user_id, "language"),
         reply_markup=language_keyboard()
     )
 
 
 # ============================================================
-# RASM / OCR TARJIMA
+# ABOUT BUTTON
+# ============================================================
+
+@bot.message_handler(
+    func=lambda message:
+    message.text in [
+        TEXTS[lang]["buttons"]["about"]
+        for lang in TEXTS
+    ]
+)
+def about_button(message):
+
+    user_id = message.from_user.id
+
+    bot.send_message(
+        message.chat.id,
+        t(user_id, "about"),
+        reply_markup=main_keyboard(
+            user_id
+        )
+    )
+
+
+# ============================================================
+# HELP BUTTON
+# ============================================================
+
+@bot.message_handler(
+    func=lambda message:
+    message.text in [
+        TEXTS[lang]["buttons"]["help"]
+        for lang in TEXTS
+    ]
+)
+def help_button(message):
+
+    user_id = message.from_user.id
+
+    bot.send_message(
+        message.chat.id,
+        t(user_id, "help"),
+        reply_markup=main_keyboard(
+            user_id
+        )
+    )
+
+
+# ============================================================
+# RASM
 # ============================================================
 
 @bot.message_handler(
@@ -1589,48 +1407,49 @@ def photo_handler(message):
         user_id
     )
 
+    processing_message = bot.send_message(
+        message.chat.id,
+        t(user_id, "image_processing")
+    )
+
+    temp_original = None
+    temp_result = None
+
     try:
 
-        bot.send_chat_action(
-            message.chat.id,
-            "typing"
-        )
+        # eng katta photo
+        photo = message.photo[-1]
 
         file_info = bot.get_file(
-            message.photo[-1].file_id
+            photo.file_id
         )
 
-        downloaded_file = bot.download_file(
+        downloaded = bot.download_file(
             file_info.file_path
         )
 
-        image = Image.open(
-            io.BytesIO(
-                downloaded_file
-            )
-        )
+        # original image
+        original = Image.open(
+            io.BytesIO(downloaded)
+        ).convert("RGB")
 
+        # OCR
         original_text = extract_text_from_image(
-            image,
+            original,
             lang
         )
 
         if not original_text:
 
-            bot.send_message(
+            bot.edit_message_text(
+                t(user_id, "no_text"),
                 message.chat.id,
-                get_text(
-                    user_id,
-                    "ocr_error"
-                ),
-                parse_mode="HTML",
-                reply_markup=main_keyboard(
-                    user_id
-                )
+                processing_message.message_id
             )
 
             return
 
+        # Tarjima
         translated_text = translate_text(
             original_text,
             LANGUAGES[lang]["google"]
@@ -1638,75 +1457,99 @@ def photo_handler(message):
 
         if not translated_text:
 
-            bot.send_message(
+            bot.edit_message_text(
+                t(user_id, "error"),
                 message.chat.id,
-                get_text(
-                    user_id,
-                    "translation_error"
-                ),
-                parse_mode="HTML",
-                reply_markup=main_keyboard(
-                    user_id
-                )
+                processing_message.message_id
             )
 
             return
 
-        output = create_translated_image(
-            image,
-            original_text,
+        # yangi rasm
+        result_image = create_translated_image(
+            original,
             translated_text,
-            lang
+            original_text
         )
 
-        if output is None:
+        output = io.BytesIO()
 
-            bot.send_message(
+        output.name = "translated_image.jpg"
+
+        result_image.save(
+            output,
+            format="JPEG",
+            quality=92
+        )
+
+        output.seek(0)
+
+        # processing xabarini o'chirish
+        try:
+
+            bot.delete_message(
                 message.chat.id,
-                get_text(
-                    user_id,
-                    "general_error"
-                ),
-                parse_mode="HTML",
-                reply_markup=main_keyboard(
-                    user_id
-                )
+                processing_message.message_id
             )
 
-            return
+        except Exception:
+            pass
 
+        # rasm
         bot.send_photo(
             message.chat.id,
             output,
             caption=(
-                "🔤 <b>OCR + Tarjima</b>\n\n"
-                + translated_text
-            ),
-            parse_mode="HTML"
+                "✅ "
+                + LANGUAGES[lang]["name"]
+                + " "
+                + "tarjima"
+            )
         )
 
     except Exception as e:
 
-        logger.error(
-            "Photo handler error: %s",
+        logger.exception(
+            "Photo processing error: %s",
             e
         )
 
-        bot.send_message(
-            message.chat.id,
-            get_text(
-                user_id,
-                "general_error"
-            ),
-            parse_mode="HTML",
-            reply_markup=main_keyboard(
-                user_id
+        try:
+
+            bot.edit_message_text(
+                t(user_id, "error"),
+                message.chat.id,
+                processing_message.message_id
             )
-        )
+
+        except Exception:
+
+            bot.send_message(
+                message.chat.id,
+                t(user_id, "error")
+            )
+
+    finally:
+
+        if temp_original:
+            try:
+                os.remove(
+                    temp_original
+                )
+            except Exception:
+                pass
+
+        if temp_result:
+            try:
+                os.remove(
+                    temp_result
+                )
+            except Exception:
+                pass
 
 
 # ============================================================
-# MATN TARJIMA
+# TEXT
 # ============================================================
 
 @bot.message_handler(
@@ -1716,51 +1559,40 @@ def text_handler(message):
 
     user_id = message.from_user.id
 
-    lang = get_user_language(
-        user_id
-    )
-
     text = message.text.strip()
 
     if not text:
         return
 
-    # Tugmalar
-    if text in [
-        TEXTS[item]["buttons"]["about"]
-        for item in TEXTS
-    ]:
+    # Keyboard tugmalari handlerlardan o'tib ketgan bo'lsa
+    all_buttons = []
 
-        about_handler(message)
+    for lang in TEXTS:
 
+        all_buttons.extend(
+            TEXTS[lang]["buttons"].values()
+        )
+
+    if text in all_buttons:
         return
 
-    if text in [
-        TEXTS[item]["buttons"]["help"]
-        for item in TEXTS
-    ]:
-
-        help_button_handler(message)
-
+    # slash command
+    if text.startswith("/"):
         return
 
-    if text in [
-        TEXTS[item]["buttons"]["language"]
-        for item in TEXTS
-    ]:
+    lang = get_user_language(
+        user_id
+    )
 
-        language_button_handler(message)
-
-        return
+    # processing
+    processing = bot.send_message(
+        message.chat.id,
+        t(user_id, "processing")
+    )
 
     try:
 
-        bot.send_chat_action(
-            message.chat.id,
-            "typing"
-        )
-
-        # Bitta so'z bo'lsa
+        # Bitta so'z
         if is_single_word(text):
 
             response = make_word_response(
@@ -1768,65 +1600,57 @@ def text_handler(message):
                 text
             )
 
-        else:
-
-            translated = translate_text(
-                text,
-                LANGUAGES[lang]["google"]
+            bot.edit_message_text(
+                response,
+                message.chat.id,
+                processing.message_id
             )
 
-            if not translated:
+            return
 
-                bot.send_message(
-                    message.chat.id,
-                    get_text(
-                        user_id,
-                        "translation_error"
-                    ),
-                    parse_mode="HTML",
-                    reply_markup=main_keyboard(
-                        user_id
-                    )
-                )
+        # Oddiy matn
+        translated = translate_text(
+            text,
+            LANGUAGES[lang]["google"]
+        )
 
-                return
+        if not translated:
 
-            response = (
-                "🌐 <b>Tarjima:</b>\n\n"
-                + translated
+            bot.edit_message_text(
+                t(user_id, "error"),
+                message.chat.id,
+                processing.message_id
             )
 
-        bot.send_message(
+            return
+
+        bot.edit_message_text(
+            translated,
             message.chat.id,
-            response,
-            parse_mode="HTML",
-            reply_markup=main_keyboard(
-                user_id
-            )
+            processing.message_id
         )
 
     except Exception as e:
 
-        logger.error(
+        logger.exception(
             "Text handler error: %s",
             e
         )
 
-        bot.send_message(
-            message.chat.id,
-            get_text(
-                user_id,
-                "general_error"
-            ),
-            parse_mode="HTML",
-            reply_markup=main_keyboard(
-                user_id
+        try:
+
+            bot.edit_message_text(
+                t(user_id, "error"),
+                message.chat.id,
+                processing.message_id
             )
-        )
+
+        except Exception:
+            pass
 
 
 # ============================================================
-# TXT FAYL TARJIMA
+# TXT FAYL
 # ============================================================
 
 @bot.message_handler(
@@ -1840,126 +1664,143 @@ def document_handler(message):
         user_id
     )
 
+    document = message.document
+
+    filename = (
+        document.file_name or ""
+    ).lower()
+
+    # faqat txt
+    if not filename.endswith(".txt"):
+
+        bot.send_message(
+            message.chat.id,
+            "⚠️ Hozircha faqat .txt fayllar qo‘llab-quvvatlanadi."
+        )
+
+        return
+
+    processing = bot.send_message(
+        message.chat.id,
+        t(user_id, "processing")
+    )
+
     try:
 
-        file_name = (
-            message.document.file_name
-            or ""
-        ).lower()
-
-        if not file_name.endswith(
-            ".txt"
-        ):
-
-            bot.send_message(
-                message.chat.id,
-                get_text(
-                    user_id,
-                    "file_error"
-                ),
-                parse_mode="HTML",
-                reply_markup=main_keyboard(
-                    user_id
-                )
-            )
-
-            return
-
-        bot.send_chat_action(
-            message.chat.id,
-            "typing"
-        )
-
         file_info = bot.get_file(
-            message.document.file_id
+            document.file_id
         )
 
-        downloaded_file = bot.download_file(
+        downloaded = bot.download_file(
             file_info.file_path
         )
 
-        text = downloaded_file.decode(
+        original_text = downloaded.decode(
             "utf-8",
             errors="ignore"
-        ).strip()
+        )
 
-        if not text:
+        if not original_text.strip():
 
-            bot.send_message(
+            bot.edit_message_text(
+                t(user_id, "empty"),
                 message.chat.id,
-                get_text(
-                    user_id,
-                    "empty_file"
-                ),
-                parse_mode="HTML",
-                reply_markup=main_keyboard(
-                    user_id
-                )
+                processing.message_id
             )
 
             return
 
         translated = translate_text(
-            text,
+            original_text,
             LANGUAGES[lang]["google"]
         )
 
         if not translated:
 
-            bot.send_message(
+            bot.edit_message_text(
+                t(user_id, "error"),
                 message.chat.id,
-                get_text(
-                    user_id,
-                    "translation_error"
-                ),
-                parse_mode="HTML",
-                reply_markup=main_keyboard(
-                    user_id
-                )
+                processing.message_id
             )
 
             return
 
-        bot.send_message(
-            message.chat.id,
-            (
-                "📄 <b>Fayl tarjimasi:</b>\n\n"
-                + translated
-            ),
-            parse_mode="HTML",
-            reply_markup=main_keyboard(
-                user_id
+        output = io.BytesIO()
+
+        output.name = (
+            "translated_" +
+            filename
+        )
+
+        output.write(
+            translated.encode(
+                "utf-8"
             )
+        )
+
+        output.seek(0)
+
+        try:
+
+            bot.delete_message(
+                message.chat.id,
+                processing.message_id
+            )
+
+        except Exception:
+            pass
+
+        bot.send_document(
+            message.chat.id,
+            output,
+            caption="✅ Tarjima qilingan fayl"
         )
 
     except Exception as e:
 
-        logger.error(
-            "Document handler error: %s",
+        logger.exception(
+            "Document error: %s",
             e
         )
 
-        bot.send_message(
-            message.chat.id,
-            get_text(
-                user_id,
-                "general_error"
-            ),
-            parse_mode="HTML",
-            reply_markup=main_keyboard(
-                user_id
+        try:
+
+            bot.edit_message_text(
+                t(user_id, "error"),
+                message.chat.id,
+                processing.message_id
             )
-        )
+
+        except Exception:
+            pass
 
 
 # ============================================================
-# BOTNI ISHGA TUSHIRISH
+# XATOLIK HANDLER
+# ============================================================
+
+@bot.middleware_handler(
+    update_types=["message"]
+)
+def middleware_handler(bot_instance, message):
+    pass
+
+
+# ============================================================
+# BOT ISHLASHI
 # ============================================================
 
 if __name__ == "__main__":
 
     logger.info(
-        "🤖 Super Tarjimon Bot ishga tushmoqda..."
+        "Super Translator Bot ishga tushmoqda..."
+    )
+
+    logger.info(
+        "Supported languages: %s",
+        ", ".join(
+            LANGUAGES.keys()
+        )
     )
 
     while True:
@@ -1974,9 +1815,12 @@ if __name__ == "__main__":
 
         except Exception as e:
 
-            logger.error(
-                "Bot polling xatosi: %s",
+            logger.exception(
+                "Bot polling error: %s",
                 e
             )
+
+            # bot yiqilib qolsa qayta ishga tushadi
+            import time
 
             time.sleep(5)
